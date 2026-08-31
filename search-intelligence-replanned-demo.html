@@ -1,3 +1,4 @@
+<meta charset="UTF-8">
 <div id="si-replanned-demo">
   <style>
     #si-replanned-demo {
@@ -187,6 +188,55 @@
       font-size: 11px;
       font-weight: 500;
     }
+    #si-replanned-demo .si-help-slot { display: inline-flex; align-items: center; margin-left: auto; }
+    #si-replanned-demo th .si-help { width: 15px; height: 15px; margin-left: 5px; font-size: 9px; vertical-align: middle; }
+    #si-replanned-demo .si-tooltip {
+      position: fixed;
+      z-index: 9999;
+      display: none;
+      max-width: 320px;
+      padding: 9px 11px;
+      border: 1px solid var(--si-brand);
+      border-radius: 7px;
+      color: var(--si-text);
+      background: #241b25;
+      box-shadow: 0 10px 28px rgba(0,0,0,.45);
+      font-size: 12px;
+      line-height: 1.55;
+      pointer-events: none;
+    }
+    #si-replanned-demo .si-follow {
+      min-height: 34px;
+      padding: 6px 10px;
+      border: 1px solid var(--si-line);
+      border-radius: 6px;
+      color: var(--si-muted);
+      background: var(--si-panel);
+      white-space: nowrap;
+    }
+    #si-replanned-demo .si-follow[aria-pressed="true"] { color: #160c16; border-color: var(--si-brand); background: var(--si-brand); }
+    #si-replanned-demo .si-follow:hover { color: var(--si-brand); border-color: var(--si-brand); }
+    #si-replanned-demo .si-follow[aria-pressed="true"]:hover { color: #160c16; }
+    #si-replanned-demo .si-followbar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+      margin: -3px 0 12px;
+      padding: 8px 10px;
+      border: 1px dashed var(--si-line);
+      border-radius: 8px;
+      color: var(--si-muted);
+      background: var(--si-shell);
+      font-size: 12px;
+    }
+    #si-replanned-demo .si-followbar .si-token { margin: 0; border: 0; cursor: pointer; }
+    #si-replanned-demo .si-drillable { cursor: pointer; transition: border-color .16s ease, transform .16s ease, background-color .16s ease; }
+    #si-replanned-demo .si-drillable:hover { border-color: var(--si-brand); background: var(--si-brand-soft); transform: translateY(-1px); }
+    #si-replanned-demo .si-drillable:focus-visible { outline: 2px solid var(--si-brand); outline-offset: 2px; }
+    #si-replanned-demo .si-drill-note { margin-top: 8px; color: var(--si-brand); font-size: 11px; }
+    #si-replanned-demo .si-drill-detail { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--si-line); }
+    #si-replanned-demo .si-drill-detail h3 { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
     #si-replanned-demo .si-diagnoses { display: grid; gap: 8px; }
     #si-replanned-demo .si-diagnosis { padding: 10px; background: var(--si-soft); }
     #si-replanned-demo .si-diagnosis div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -254,6 +304,7 @@
     #si-replanned-demo .si-token-list { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
     #si-replanned-demo .si-token { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 999px; color: var(--si-text); background: var(--si-brand-soft); }
     #si-replanned-demo .si-token button { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; color: var(--si-muted); background: transparent; }
+    #si-replanned-demo .si-token .si-follow { width: auto; min-height: 24px; padding: 2px 6px; border: 1px solid var(--si-line); border-radius: 5px; }
     #si-replanned-demo .si-footnote { margin-top: 10px; color: var(--si-muted); font-size: 11px; }
     #si-replanned-demo .si-empty { padding: 24px; text-align: center; color: var(--si-muted); }
     #si-replanned-demo .si-detail-row td { background: var(--si-soft); }
@@ -316,6 +367,7 @@
     </div>
     <main class="si-main" id="si-content"></main>
   </div>
+  <div class="si-tooltip" id="si-tooltip" role="tooltip"></div>
 
   <script>
     (() => {
@@ -324,6 +376,14 @@
       const granularityEl = root.querySelector('#si-granularity');
       const periodEl = root.querySelector('#si-period');
       const windowNote = root.querySelector('#si-window-note');
+      const tooltipEl = root.querySelector('#si-tooltip');
+
+      const STORAGE_KEY = 'search-intelligence-demo-favorites-v1';
+      function loadFavorites(){
+        try { const value=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}'); return {brands:Array.isArray(value.brands)?value.brands:[],keywords:Array.isArray(value.keywords)?value.keywords:[]}; }
+        catch (_) { return {brands:[],keywords:[]}; }
+      }
+      const storedFavorites = loadFavorites();
 
       const BRANDS = ['WAVYTALK','TYMO',"L'ANGE",'Dyson','Shark','Revlon','CHI','Remington','Conair','SHEGLAM'];
       const BRAND_BASE = {
@@ -353,13 +413,14 @@
         month:{name:'月',window:'近12个月',labels:['2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08']}
       };
       const state = {
-        page:'overview', granularity:'day', snapshotIndex:{day:29,week:7,month:11}, brandTab:'detail', keywordTab:'discover', brand:'WAVYTALK', scope:'focus', brandMetric:'coverage',
-        compareBrands:['WAVYTALK','TYMO'], keyword:'hair dryer', compareKeywords:[], quadrantBrand:'',
+        page:'overview', granularity:'day', snapshotIndex:{day:29,week:7,month:11}, brandTab:'detail', keywordTab:'discover', brand:storedFavorites.brands[0]||'WAVYTALK', scope:'focus', brandMetric:'coverage',
+        compareBrands:['WAVYTALK','TYMO'], keyword:storedFavorites.keywords[0]||'hair dryer', compareKeywords:[], quadrantBrand:'',
         detailKeyword:'all', detailBrand:'', detailStatus:'all', openDetail:null,
         opportunityCategory:'all', opportunityKind:'all', opportunityBrand:'', opportunitySearch:'',
         overviewTableSearch:'', overviewTableCategory:'all', overviewTableType:'all',
         brandKeywordSearch:'', brandKeywordCategory:'all', brandKeywordTrend:'all',
-        leaderboardSearch:'', leaderboardGrowth:'all', quadrantTableSearch:'', quadrantTableCategory:'all',
+        leaderboardSearch:'', leaderboardGrowth:'all', quadrantTableSearch:'', quadrantTableCategory:'all', drillContext:null,
+        followedBrands:new Set(storedFavorites.brands), followedKeywords:new Set(storedFavorites.keywords),
         trends:{overview:{granularity:'day',range:30},brand:{granularity:'day',range:30},brandCompare:{granularity:'day',range:30},keyword:{granularity:'day',range:30},keywordCompare:{granularity:'day',range:30}}
       };
 
@@ -382,7 +443,50 @@
         '趋势末期排名':'当前趋势范围最后一个有效周期的搜索频率排名。',
         '趋势范围':'当前趋势图所使用的独立时间窗口，不受全局快照日期影响。',
         '细分品类':'系统对搜索词做语义识别后分配的互斥单一品类标签。',
-        '机会分':'由搜索排名、排名动量、品类相关度、品牌覆盖缺口、点击转化机会和时效综合计算。'
+        '机会分':'由搜索排名、排名动量、品类相关度、品牌覆盖缺口、点击转化机会和时效综合计算。',
+        '关键词覆盖数':'目标品牌进入对应关键词Top 3 ASIN的关键词数量。',
+        '新增覆盖':'本期目标品牌进入Top 3、上期未进入Top 3的关键词数量。',
+        '流失覆盖':'上期目标品牌进入Top 3、本期未进入Top 3的关键词数量。',
+        '稳定留存':'本期与上期均由目标品牌进入Top 3的关键词数量。',
+        '排名动量':'将关键词排名变化按起始排名价值加权后汇总；排名越靠前，同样名次变化权重越高。',
+        'Top 10K覆盖':'目标品牌进入Top 3且搜索频率排名位于前10,000的关键词数量。',
+        '核心词覆盖率':'品牌已覆盖核心关键词数 ÷ 核心关键词总数。',
+        '效率差':'加权转化份额减去加权点击份额，单位为百分点。',
+        '搜索排名':'搜索词在所选周期的搜索频率相对排名，数值越小代表热度越高。',
+        '排名趋势':'对比当前周期与上一同口径周期的搜索频率排名变化。',
+        '品牌覆盖':'目标品牌是否进入该搜索词Top 3点击ASIN。',
+        '关键词类型':'根据搜索词语义识别的互斥用途类型，例如品类词、产品词、功能词或场景词。',
+        'Top 3':'该搜索词点击份额最高的三个ASIN及其品牌、点击份额和转化份额。',
+        '四象限':'以当前词集点击份额中位数和转化份额中位数为分割线，每个气泡代表一个关键词。'
+      };
+
+      const PANEL_DEFS = {
+        '搜索经营基本面是否改善':'展示重点品类有效覆盖随时间的变化，并与维护的竞品池中位数比较。',
+        '搜索资产增长还是流失':'拆分本期新增覆盖、流失覆盖、市场新词覆盖和稳定留存。',
+        '当前结构性问题':'系统依据覆盖、份额、排名和留存阈值生成的经营诊断。',
+        '市场机会来自哪里':'将高机会关键词按互斥细分品类汇总，机会分越高越值得优先分析。',
+        '高机会关键词':'同时包含未覆盖的快速增长词与已覆盖但转化承接不足的关键词。',
+        '覆盖结构':'所选品牌在重点美发工具各互斥细分品类下的有效关键词覆盖。',
+        '品牌关键词变化摘要':'所选品牌当前周期关键词的排名、趋势、点击份额和转化份额明细。',
+        '关键词资产关系':'两个所选品牌关键词覆盖集合的独有、共有关系。',
+        '重点品类有效覆盖趋势差距':'两个品牌在同一重点品类口径下的有效覆盖趋势。',
+        '结构差距画像':'两个品牌在覆盖、头部词、点击、转化和留存上的同口径比较。',
+        '品牌榜单':'竞品清单内品牌的覆盖、增减、动量和份额指标横向排序。',
+        '机会子品类':'高机会关键词在互斥美发工具细分品类下的机会分汇总。',
+        '时效热词阶段':'根据节日或事件日期距离与搜索排名变化识别预热、爆发和衰退阶段。',
+        '关键词机会列表':'按当前快照展示关键词排名、趋势、机会分和品牌覆盖状态。',
+        '关键词排名趋势对比':'在顶部所选颗粒度与截止周期内比较2至5个关键词的搜索排名。',
+        '关键词明细':'一行表示一个关键词、一个周期及一个所选品牌的排名和份额状态。',
+        '全市场高机会词看板':'展示四象限之外的未覆盖或高机会关键词，便于形成行动清单。'
+      };
+      const COLUMN_DEFS = {
+        '时间':'当前行数据对应的日、自然周或自然月周期。','搜索词':'Amazon消费者实际输入的搜索查询。','品牌':'Top 3 ASIN品牌或当前筛选品牌。',
+        '当前排名':METRIC_DEFS['当前搜索排名'],'搜索排名':METRIC_DEFS['搜索排名'],'趋势':METRIC_DEFS['排名趋势'],'排名趋势':METRIC_DEFS['排名趋势'],
+        '点击份额':METRIC_DEFS['加权点击份额'],'转化份额':METRIC_DEFS['加权转化份额'],'机会分':METRIC_DEFS['机会分'],'细分品类':METRIC_DEFS['细分品类'],
+        '关键词类型':METRIC_DEFS['关键词类型'],'品牌覆盖':METRIC_DEFS['品牌覆盖'],'状态':'根据是否入榜及所选品牌是否进入Top 3划分。','Top 3':METRIC_DEFS['Top 3'],
+        '有效覆盖':METRIC_DEFS['重点品类有效覆盖'],'全市场覆盖':METRIC_DEFS['全市场覆盖'],'Top 10K覆盖':METRIC_DEFS['Top 10K覆盖'],
+        '新增覆盖':METRIC_DEFS['新增覆盖'],'流失覆盖':METRIC_DEFS['流失覆盖'],'净增':'新增覆盖数减去流失覆盖数。','排名动量':METRIC_DEFS['排名动量'],
+        '效率差':METRIC_DEFS['效率差'],'新词留存率':METRIC_DEFS['新词留存率'],'关注':'保存在当前浏览器中的个人优先查看标记。','象限':'按点击份额和转化份额中位数划分的经营位置。'
       };
 
       const fmt = n => new Intl.NumberFormat('zh-CN').format(Math.round(n || 0));
@@ -400,6 +504,10 @@
       function trendView(key){
         const config=state.trends[key], group=GROUPS[config.granularity], count=Math.min(config.range,group.labels.length);
         return {granularity:config.granularity,labels:group.labels.slice(-count),count};
+      }
+      function globalTrendView(){
+        const group=currentGroup(), end=currentIndex(), target=state.granularity==='day'?30:state.granularity==='week'?8:12, start=Math.max(0,end-target+1);
+        return {granularity:state.granularity,labels:group.labels.slice(start,end+1),count:end-start+1,start,end};
       }
       function trendControls(key,fixedRange=false){
         const config=state.trends[key], ranges=config.granularity==='day'?[7,14,30]:config.granularity==='week'?[4,8]:[3,6,12];
@@ -447,14 +555,23 @@
         });
       }
       function snapshotMetric(brand,metric,scope=state.scope){ return metricSeries(brand,metric,scope,state.granularity)[currentIndex()]; }
-      function help(label,text=METRIC_DEFS[label]||'该指标按当前页面所示筛选条件和数据口径计算。'){ return `<button type="button" class="si-help" aria-label="查看${esc(label)}口径" data-tooltip="${esc(text)}">?</button>`; }
-      function kpi(label,value,meta,cls='') { return `<div class="si-kpi"><div class="si-kpi-head"><div class="si-kpi-label">${label}</div>${help(label)}</div><div class="si-kpi-value ${cls}">${value}</div><div class="si-kpi-meta">${meta}</div></div>`; }
+      function help(label,text=METRIC_DEFS[label]||PANEL_DEFS[label]||COLUMN_DEFS[label]||'该数据按当前页面所示筛选条件和同一时间颗粒度计算。'){ return `<button type="button" class="si-help" aria-label="查看${esc(label)}口径" data-tooltip="${esc(text)}">?</button>`; }
+      function kpi(label,value,meta,cls='',drill='') { return `<div class="si-kpi${drill?' si-drillable':''}" ${drill?`data-drill="${esc(drill)}" role="button" tabindex="0"`:''}><div class="si-kpi-head"><div class="si-kpi-label">${label}</div>${help(label)}</div><div class="si-kpi-value ${cls}">${value}</div><div class="si-kpi-meta">${meta}</div>${drill?'<div class="si-drill-note">点击查看明细 →</div>':''}</div>`; }
       function badge(text,type='info'){ return `<span class="si-badge si-badge-${type}">${esc(text)}</span>`; }
       function bars(rows){ const max=Math.max(1,...rows.map(r=>r.value)); return `<div class="si-bars">${rows.map(r=>`<div class="si-bar"><span>${esc(r.label)}</span><div class="si-track"><div class="si-fill ${r.color||''}" style="width:${Math.max(2,r.value/max*100)}%"></div></div><span class="si-num">${r.suffix?Number(r.value).toFixed(1)+r.suffix:fmt(r.value)}</span></div>`).join('')}</div>`; }
       function pairedBars(rows){ return `<div class="si-paired">${rows.map(row=>{const max=Math.max(1,row.own,row.peer),format=value=>row.suffix?Number(value).toFixed(1)+row.suffix:fmt(value);return `<div class="si-paired-row"><strong>${esc(row.label)}</strong><div class="si-paired-bars"><div class="si-paired-line"><div class="si-track"><div class="si-fill" style="width:${row.own/max*100}%"></div></div><span class="si-num">${format(row.own)}</span></div><div class="si-paired-line"><div class="si-track"><div class="si-fill peer" style="width:${row.peer/max*100}%"></div></div><span class="si-num">${format(row.peer)}</span></div></div></div>`}).join('')}</div>`; }
       function tags(item){ return [item.category,item.kind,item.people!=='未明确'?item.people:null,item.hair||null,item.scene!=='未明确'?item.scene:null].filter(Boolean).map(v=>`<span class="si-tag">${esc(v)}</span>`).join(''); }
       function secondaryTags(item){ return [item.people!=='未明确'?item.people:null,item.hair||null,item.scene!=='未明确'?item.scene:null].filter(Boolean).map(v=>`<span class="si-tag">${esc(v)}</span>`).join(''); }
-      function searchableInput(id,value,values,placeholder,allowEmpty=true){ const recommendations=[...new Set(values)].slice(0,8);return `<input id="${id}" list="${id}-options" value="${esc(value==='all'?'':value)}" placeholder="${esc(placeholder)}" autocomplete="off"><datalist id="${id}-options">${recommendations.map(v=>`<option value="${esc(v)}"></option>`).join('')}</datalist>${allowEmpty?'<span class="si-inline-note">可留空</span>':''}`; }
+      function orderedValues(values,favorites=[]){ const fav=new Set(favorites.map(v=>v.toLowerCase())); return [...new Set(values)].sort((a,b)=>Number(fav.has(b.toLowerCase()))-Number(fav.has(a.toLowerCase()))); }
+      function searchableInput(id,value,values,placeholder,allowEmpty=true,favorites=[]){ const recommendations=orderedValues(values,favorites).slice(0,8);return `<input id="${id}" list="${id}-options" value="${esc(value==='all'?'':value)}" placeholder="${esc(placeholder)}" autocomplete="off"><datalist id="${id}-options">${recommendations.map(v=>`<option value="${esc(v)}"></option>`).join('')}</datalist>${allowEmpty?'<span class="si-inline-note">可留空</span>':''}`; }
+      function saveFavorites(){ try{localStorage.setItem(STORAGE_KEY,JSON.stringify({brands:[...state.followedBrands],keywords:[...state.followedKeywords]}));}catch(_){} }
+      function isFollowed(type,value){ return (type==='brand'?state.followedBrands:state.followedKeywords).has(value); }
+      function followButton(type,value,compact=false){ const active=isFollowed(type,value),label=`${active?'取消关注':'关注'}${type==='brand'?'品牌':'关键词'} ${value}`; return `<button type="button" class="si-follow" data-follow-type="${type}" data-follow-value="${esc(value)}" aria-pressed="${active}" aria-label="${esc(label)}" title="${active?'取消关注':'加入关注'}">${active?'★ 已关注':compact?'☆':'☆ 加入关注'}</button>`; }
+      function favoritesBar(type){ const values=[...(type==='brand'?state.followedBrands:state.followedKeywords)];return `<div class="si-followbar"><strong>我的关注</strong>${values.length?values.map(value=>`<button type="button" class="si-token" data-open-favorite-type="${type}" data-open-favorite-value="${esc(value)}">★ ${esc(value)}</button>`).join(''):'<span>暂无关注，点击列表或详情页中的 ☆ 添加</span>'}<span class="si-inline-note">仅保存在当前浏览器</span></div>`; }
+      function decorateDefinitions(){
+        content.querySelectorAll('.si-panel-head').forEach(head=>{if(head.querySelector('.si-panel-help'))return;const title=head.querySelector('h2,h3')?.textContent.trim();if(!title)return;const lookup=title.replace(/^\d+\.\s*/, '');const slot=document.createElement('span');slot.className='si-help-slot si-panel-help';slot.innerHTML=help(title,PANEL_DEFS[lookup]||METRIC_DEFS[lookup]);head.appendChild(slot);});
+        content.querySelectorAll('th').forEach(cell=>{if(cell.querySelector('.si-help'))return;const label=cell.textContent.trim();if(!label)return;cell.insertAdjacentHTML('beforeend',help(label));});
+      }
       function matchValue(value,values){ const normalized=String(value||'').trim().toLowerCase(); return values.find(item=>item.toLowerCase()===normalized)||''; }
       function setCompareBrand(index,raw){ const value=matchValue(raw,BRANDS),other=state.compareBrands[index===0?1:0];if(value&&value!==other)state.compareBrands[index]=value;brandPage(); }
       function addCompareKeyword(raw){ const value=String(raw||'').trim();if(value&&state.compareKeywords.length<5&&!state.compareKeywords.some(term=>term.toLowerCase()===value.toLowerCase()))state.compareKeywords.push(value);keywordPage(); }
@@ -479,29 +596,30 @@
           ${pageHead('搜索经营总览',`${currentLabel()} 快照 · 回答经营状态、搜索资产、结构问题与市场机会`,badge('竞品清单中位数基准','info'))}
           <div class="si-scope-note"><strong>数据日期作用范围：</strong>经营基本面指标、搜索资产增减、结构问题、市场机会及高机会关键词均随全局日期变化；“搜索经营基本面趋势”使用图内时间颗粒度独立查看。</div>
           <section class="si-kpis" aria-label="搜索经营基本面">
-            ${kpi('重点品类有效覆盖',fmt(latest),`较上期 +${fmt(latest-prev)}`,'si-up')}
-            ${kpi('加权点击份额',pct(clickNow),'竞品中位数 14.6%','si-up')}
-            ${kpi('加权转化份额',pct(convNow),`点击—转化差 ${(convNow-clickNow).toFixed(1)}pp`,'si-down')}
-            ${kpi('机会词覆盖率','41.8%','高机会词中仍有 58.2% 未覆盖','si-down')}
+            ${kpi('重点品类有效覆盖',fmt(latest),`较上期 +${fmt(latest-prev)}`,'si-up','brand:detail:coverage:si-brand-trend-panel')}
+            ${kpi('加权点击份额',pct(clickNow),'竞品中位数 14.6%','si-up','brand:detail:share:si-brand-trend-panel')}
+            ${kpi('加权转化份额',pct(convNow),`点击—转化差 ${(convNow-clickNow).toFixed(1)}pp`,'si-down','brand:detail:share:si-brand-trend-panel')}
+            ${kpi('机会词覆盖率','41.8%','高机会词中仍有 58.2% 未覆盖','si-down','keyword:discover:none:si-keyword-opportunity-list')}
           </section>
           <div class="si-grid-2">
-            <section class="si-panel"><div class="si-panel-head"><div><h2>1. 搜索经营基本面是否改善</h2><div class="si-caption">有效覆盖趋势与竞品池中位数</div></div>${trendControls('overview',true)}</div><div id="si-overview-line" class="si-chart"></div></section>
-            <section class="si-panel"><div class="si-panel-head"><div><h2>2. 搜索资产增长还是流失</h2><div class="si-caption">新增、流失与净覆盖结构</div></div>${badge('净增 +54','up')}</div>${bars([{label:'新增覆盖',value:631,color:'green'},{label:'流失覆盖',value:577,color:'red'},{label:'市场新词覆盖',value:248,color:'amber'},{label:'稳定留存',value:1122}])}</section>
+            <section class="si-panel si-drillable" data-drill="brand:detail:coverage:si-brand-trend-panel" role="button" tabindex="0"><div class="si-panel-head"><div><h2>1. 搜索经营基本面是否改善</h2><div class="si-caption">有效覆盖趋势与竞品池中位数</div></div>${trendControls('overview',true)}</div><div id="si-overview-line" class="si-chart"></div><div class="si-drill-note">点击进入品牌趋势明细 →</div></section>
+            <section class="si-panel si-drillable" data-drill="brand:detail:newlost:si-brand-trend-panel" role="button" tabindex="0"><div class="si-panel-head"><div><h2>2. 搜索资产增长还是流失</h2><div class="si-caption">新增、流失与净覆盖结构</div></div>${badge('净增 +54','up')}</div>${bars([{label:'新增覆盖',value:631,color:'green'},{label:'流失覆盖',value:577,color:'red'},{label:'市场新词覆盖',value:248,color:'amber'},{label:'稳定留存',value:1122}])}<div class="si-drill-note">点击查看新增与流失关键词 →</div></section>
           </div>
           <div class="si-grid-2">
             <section class="si-panel"><div class="si-panel-head"><div><h2>3. 当前结构性问题</h2><div class="si-caption">系统规则判断，仅显示诊断结论</div></div>${badge('3项需关注','warn')}</div><div class="si-diagnoses">
-              <article class="si-diagnosis"><div><h3>头部词覆盖偏薄</h3>${badge('高','down')}</div><p>Top 10K 有效覆盖占比 2.6%，低于竞品中位数 4.1%。</p></article>
-              <article class="si-diagnosis"><div><h3>转化承接不足</h3>${badge('高','down')}</div><p>加权转化份额低于点击份额 ${(clickNow-convNow).toFixed(1)} 个百分点。</p></article>
-              <article class="si-diagnosis"><div><h3>新词留存偏低</h3>${badge('关注','warn')}</div><p>新覆盖词次周期留存率 58.7%，竞品中位数为 63.4%。</p></article>
+              <article class="si-diagnosis si-drillable" data-drill="brand:detail:topk:si-brand-trend-panel" role="button" tabindex="0"><div><h3>头部词覆盖偏薄</h3>${badge('高','down')}</div><p>Top 10K 有效覆盖占比 2.6%，低于竞品中位数 4.1%。</p></article>
+              <article class="si-diagnosis si-drillable" data-drill="brand:detail:share:si-brand-trend-panel" role="button" tabindex="0"><div><h3>转化承接不足</h3>${badge('高','down')}</div><p>加权转化份额低于点击份额 ${(clickNow-convNow).toFixed(1)} 个百分点。</p></article>
+              <article class="si-diagnosis si-drillable" data-drill="brand:detail:retention:si-brand-trend-panel" role="button" tabindex="0"><div><h3>新词留存偏低</h3>${badge('关注','warn')}</div><p>新覆盖词次周期留存率 58.7%，竞品中位数为 63.4%。</p></article>
             </div></section>
-            <section class="si-panel"><div class="si-panel-head"><div><h2>4. 市场机会来自哪里</h2><div class="si-caption">机会分综合排名、增速、相关度、覆盖缺口与时效</div></div>${badge('Top 200K','info')}</div>${bars([{label:'多功能造型器',value:91},{label:'吹风机',value:86},{label:'吹风梳/热风梳',value:82},{label:'卷发工具',value:77},{label:'美发配件',value:61}])}</section>
+            <section class="si-panel si-drillable" data-drill="keyword:discover:none:si-keyword-opportunity-list" role="button" tabindex="0"><div class="si-panel-head"><div><h2>4. 市场机会来自哪里</h2><div class="si-caption">机会分综合排名、增速、相关度、覆盖缺口与时效</div></div>${badge('Top 200K','info')}</div>${bars([{label:'多功能造型器',value:91},{label:'吹风机',value:86},{label:'吹风梳/热风梳',value:82},{label:'卷发工具',value:77},{label:'美发配件',value:61}])}<div class="si-drill-note">点击进入关键词机会明细 →</div></section>
           </div>
           <section class="si-panel"><div class="si-panel-head"><div><h2>高机会关键词</h2><div class="si-caption">包含未覆盖快速增长词，以及已覆盖但承接不足的词 · 筛选仅作用于此表</div></div><div class="si-controls"><div class="si-field"><label for="si-overview-table-search">搜索词</label><input id="si-overview-table-search" value="${esc(state.overviewTableSearch)}" placeholder="输入后按 Enter"></div><div class="si-field"><label for="si-overview-table-category">细分品类</label><select id="si-overview-table-category"><option value="all">全部品类</option>${overviewCategories.map(value=>`<option ${value===state.overviewTableCategory?'selected':''}>${esc(value)}</option>`).join('')}</select></div><div class="si-field"><label for="si-overview-table-type">机会类型</label><select id="si-overview-table-type"><option value="all" ${state.overviewTableType==='all'?'selected':''}>全部类型</option><option value="covered" ${state.overviewTableType==='covered'?'selected':''}>承接提升</option><option value="gap" ${state.overviewTableType==='gap'?'selected':''}>覆盖缺口</option></select></div></div></div>
             <div class="si-table-wrap"><table><thead><tr><th>搜索词</th><th>机会类型</th><th>细分品类</th><th class="si-num">当前排名</th><th class="si-num">机会分</th><th>WAVYTALK状态</th></tr></thead><tbody>
-              ${overviewRows.length?overviewRows.map(item=>`<tr><td class="si-term">${esc(item.term)}</td><td>${item.own?'承接提升':'覆盖缺口'}</td><td>${esc(item.category)}</td><td class="si-num">${snapshotRank(item)==null?'未入榜':fmt(snapshotRank(item))}</td><td class="si-num">${item.opp}</td><td>${item.own?badge('已覆盖','info'):badge('未覆盖','warn')}</td></tr>`).join(''):'<tr><td colspan="6" class="si-empty">没有符合条件的关键词</td></tr>'}
+              ${overviewRows.length?overviewRows.map(item=>`<tr><td><button type="button" class="si-link" data-open-keyword="${esc(item.term)}">${esc(item.term)}</button></td><td>${item.own?'承接提升':'覆盖缺口'}</td><td>${esc(item.category)}</td><td class="si-num">${snapshotRank(item)==null?'未入榜':fmt(snapshotRank(item))}</td><td class="si-num">${item.opp}</td><td>${item.own?badge('已覆盖','info'):badge('未覆盖','warn')}</td></tr>`).join(''):'<tr><td colspan="6" class="si-empty">没有符合条件的关键词</td></tr>'}
             </tbody></table></div>
           </section>
           <div class="si-footnote">所有数值为交互演示用模拟数据；“热度”仅由搜索频率排名映射，不代表搜索量。</div>`;
+        decorateDefinitions();
         queueCharts(()=>lineChart('si-overview-line',[
           {name:'WAVYTALK',values:trendCoverage,colorIndex:0},{name:'竞品中位数',values:trendCoverage.map((v,i)=>Math.round(v*.91+Math.sin(i)*8)),colorIndex:2}
         ],{title:'重点品类有效覆盖趋势',yLabel:'有效覆盖数（词）',rank:false,labels:trend.labels}));
@@ -509,13 +627,15 @@
 
       const BRAND_TABS={detail:'品牌详情',compare:'品牌对比',leaderboard:'品牌榜单'};
       function brandPage(){
-        const controls=state.brandTab==='detail'?`<div class="si-field"><label for="si-brand">品牌搜索</label>${searchableInput('si-brand',state.brand,BRANDS,'输入品牌名称',false)}</div>`:'';
+        const controls=state.brandTab==='detail'?`<div class="si-field"><label for="si-brand">品牌搜索</label>${searchableInput('si-brand',state.brand,BRANDS,'输入品牌名称',false,[...state.followedBrands])}</div>${followButton('brand',state.brand)}`:'';
         let html=pageHead('品牌分析','单品牌诊断、多品牌对比与品牌榜单各自独立',controls);
         html+=`<nav class="si-tabs" aria-label="品牌分析页面">${Object.entries(BRAND_TABS).map(([id,name])=>`<button type="button" data-brand-tab="${id}" aria-selected="${id===state.brandTab}">${name}</button>`).join('')}</nav>`;
+        html+=favoritesBar('brand');
         if(state.brandTab==='detail') html+=brandDetail();
         if(state.brandTab==='compare') html+=brandCompare();
         if(state.brandTab==='leaderboard') html+=brandLeaderboard();
         content.innerHTML=html;
+        decorateDefinitions();
         if(state.brandTab==='detail') queueCharts(()=>drawBrandDetailCharts());
         if(state.brandTab==='compare') queueCharts(()=>drawBrandCompareChart());
       }
@@ -526,28 +646,34 @@
         const brandItems=KEYWORDS.filter(k=>k.top.some(name=>name.toLowerCase()===state.brand.toLowerCase())),brandCategories=[...new Set(brandItems.map(item=>item.category))];
         return `<div class="si-controls" style="margin-bottom:12px">${scopeControls()}</div>
           <section class="si-kpis">${kpi(state.scope==='focus'?'重点品类有效覆盖':'全市场覆盖',fmt(latest),`较上期 ${latest-prev>=0?'+':''}${fmt(latest-prev)}`,latest>=prev?'si-up':'si-down')}${kpi('加权点击份额',pct(clickNow),'连续排名权重')}${kpi('加权转化份额',pct(convNow),`效率差 ${(convNow-clickNow).toFixed(1)}pp`,convNow>=clickNow?'si-up':'si-down')}${kpi('新词留存率',pct(retentionNow),'次周期继续进入Top 3')}</section>
-          <div class="si-grid-2"><section class="si-panel"><div class="si-panel-head"><div><h2>${metricOptions[state.brandMetric]}趋势</h2><div class="si-caption">趋势指标下拉仅切换此图，全部选项均有效</div></div><div class="si-controls"><div class="si-field"><label for="si-brand-metric">趋势指标（仅此图）</label><select id="si-brand-metric">${Object.entries(metricOptions).map(([id,name])=>`<option value="${id}" ${id===state.brandMetric?'selected':''}>${name}</option>`).join('')}</select></div>${trendControls('brand')}</div></div><div id="si-brand-trend" class="si-chart"></div></section>
+          <div class="si-grid-2"><section class="si-panel" id="si-brand-trend-panel"><div class="si-panel-head"><div><h2>${metricOptions[state.brandMetric]}趋势</h2><div class="si-caption">时间继承顶部筛选：${currentGroup().name}颗粒度，截止 ${currentLabel()}</div></div><div class="si-controls"><div class="si-field"><label for="si-brand-metric">趋势指标（仅此图）</label><select id="si-brand-metric">${Object.entries(metricOptions).map(([id,name])=>`<option value="${id}" ${id===state.brandMetric?'selected':''}>${name}</option>`).join('')}</select></div></div></div><div id="si-brand-trend" class="si-chart"></div>${brandDrillDetail()}</section>
           <section class="si-panel"><div class="si-panel-head"><div><h2>覆盖结构</h2><div class="si-caption">重点美发工具细分品类</div></div></div>${bars([{label:'吹风机',value:214},{label:'吹风梳/热风梳',value:186},{label:'直发工具',value:142},{label:'卷发工具',value:126},{label:'多功能造型器',value:82},{label:'其他美发工具',value:67}])}</section></div>
-          <section class="si-panel"><div class="si-panel-head"><div><h2>品牌关键词变化摘要</h2><div class="si-caption">详情列表与排名变化分层 · 筛选仅作用于此表</div></div><div class="si-controls"><div class="si-field"><label for="si-brand-keyword-search">搜索词</label><input id="si-brand-keyword-search" value="${esc(state.brandKeywordSearch)}" placeholder="输入后按 Enter"></div><div class="si-field"><label for="si-brand-keyword-category">细分品类</label><select id="si-brand-keyword-category"><option value="all">全部品类</option>${brandCategories.map(value=>`<option ${value===state.brandKeywordCategory?'selected':''}>${esc(value)}</option>`).join('')}</select></div><div class="si-field"><label for="si-brand-keyword-trend">排名趋势</label><select id="si-brand-keyword-trend"><option value="all" ${state.brandKeywordTrend==='all'?'selected':''}>全部趋势</option><option value="up" ${state.brandKeywordTrend==='up'?'selected':''}>上升</option><option value="down" ${state.brandKeywordTrend==='down'?'selected':''}>下降</option></select></div></div></div>${keywordMiniTable(brandItems)}</section>`;
+          <section class="si-panel" id="si-brand-keyword-detail"><div class="si-panel-head"><div><h2>品牌关键词变化摘要</h2><div class="si-caption">详情列表与排名变化分层 · 筛选仅作用于此表</div></div><div class="si-controls"><div class="si-field"><label for="si-brand-keyword-search">搜索词</label><input id="si-brand-keyword-search" value="${esc(state.brandKeywordSearch)}" placeholder="输入后按 Enter"></div><div class="si-field"><label for="si-brand-keyword-category">细分品类</label><select id="si-brand-keyword-category"><option value="all">全部品类</option>${brandCategories.map(value=>`<option ${value===state.brandKeywordCategory?'selected':''}>${esc(value)}</option>`).join('')}</select></div><div class="si-field"><label for="si-brand-keyword-trend">排名趋势</label><select id="si-brand-keyword-trend"><option value="all" ${state.brandKeywordTrend==='all'?'selected':''}>全部趋势</option><option value="up" ${state.brandKeywordTrend==='up'?'selected':''}>上升</option><option value="down" ${state.brandKeywordTrend==='down'?'selected':''}>下降</option></select></div></div></div>${keywordMiniTable(brandItems)}</section>`;
+      }
+      function brandDrillDetail(){
+        if(!state.drillContext||state.drillContext.page!=='brand')return '';
+        const metric=state.drillContext.metric, title={coverage:'有效覆盖关键词明细',newlost:'新增与流失关键词明细',share:'点击与转化承接明细',topk:'Top 10K关键词明细',retention:'新词留存明细'}[metric]||'指标明细';
+        const rows=KEYWORDS.filter(item=>item.top.some(name=>name.toLowerCase()===state.brand.toLowerCase())).slice(0,6);
+        return `<div class="si-drill-detail" id="si-brand-drill-detail"><h3>${esc(title)} ${help(title,'以下关键词用于解释当前图表变化，口径与顶部时间筛选一致。')}</h3><div class="si-table-wrap"><table><thead><tr><th>搜索词</th><th>细分品类</th><th class="si-num">搜索排名</th><th>排名趋势</th><th class="si-num">点击份额</th><th class="si-num">转化份额</th></tr></thead><tbody>${rows.map(item=>{const share=snapshotShare(item,state.brand)||{click:0,conv:0};return `<tr><td class="si-term">${esc(item.term)}</td><td>${esc(item.category)}</td><td class="si-num">${snapshotRank(item)==null?'未进入榜单':fmt(snapshotRank(item))}</td><td>${item.slope<0?badge('上升','up'):badge('下降','down')}</td><td class="si-num">${pct(share.click)}</td><td class="si-num">${pct(share.conv)}</td></tr>`}).join('')}</tbody></table></div></div>`;
       }
       function brandCompare(){
         const [brandA,brandB]=state.compareBrands, relationSeed=hash(`${brandA}>${brandB}`), shared=270+relationSeed%81, aUnique=150+relationSeed%79, bUnique=140+(relationSeed>>3)%83;
         const aCoverage=snapshotMetric(brandA,'coverage','focus'), bCoverage=snapshotMetric(brandB,'coverage','focus'), aClick=snapshotMetric(brandA,'click'), bClick=snapshotMetric(brandB,'click'), aConv=snapshotMetric(brandA,'conversion'), bConv=snapshotMetric(brandB,'conversion'), aRetention=snapshotMetric(brandA,'retention'), bRetention=snapshotMetric(brandB,'retention');
-        return `<section class="si-panel" style="margin-bottom:12px"><div class="si-panel-head"><div><h2>选择两个对比品牌</h2><div class="si-caption">仅支持两个品牌；两个位置均可调整，WAVYTALK不再固定</div></div><div class="si-controls"><div class="si-field"><label for="si-compare-brand-a">品牌 A</label>${searchableInput('si-compare-brand-a',brandA,BRANDS,'输入品牌名称',false)}</div><div class="si-field"><label for="si-compare-brand-b">品牌 B</label>${searchableInput('si-compare-brand-b',brandB,BRANDS,'输入品牌名称',false)}</div></div></div></section>
+        return `<section class="si-panel" style="margin-bottom:12px"><div class="si-panel-head"><div><h2>选择两个对比品牌</h2><div class="si-caption">仅支持两个品牌；两个位置均可调整，WAVYTALK不再固定</div></div><div class="si-controls"><div class="si-field"><label for="si-compare-brand-a">品牌 A</label>${searchableInput('si-compare-brand-a',brandA,BRANDS,'输入品牌名称',false,[...state.followedBrands])}</div><div class="si-field"><label for="si-compare-brand-b">品牌 B</label>${searchableInput('si-compare-brand-b',brandB,BRANDS,'输入品牌名称',false,[...state.followedBrands])}</div></div></div></section>
           <section class="si-panel" style="margin-bottom:12px"><div class="si-panel-head"><div><h2>关键词资产关系</h2><div class="si-caption">下方所有关系、指标、趋势和结构均使用当前两个品牌</div></div></div><div class="si-overlap"><article><span>${esc(brandA)}独有</span><strong>${fmt(aUnique)}</strong><p>ionic hair dryer<br>thermal styling brush</p></article><article><span>双方共同覆盖</span><strong>${fmt(shared)}</strong><p>hair dryer<br>blow dryer brush</p></article><article><span>${esc(brandB)}独有</span><strong>${fmt(bUnique)}</strong><p>travel hair dryer<br>hot air brush</p></article></div></section>
           <section class="si-kpis">${kpi('有效覆盖差距',`${aCoverage-bCoverage>=0?'+':''}${fmt(aCoverage-bCoverage)}`,`${brandA} − ${brandB}`,aCoverage>=bCoverage?'si-up':'si-down')}${kpi('双方共同覆盖',fmt(shared),`${brandA} 与 ${brandB}`)}${kpi(`${brandA}独有词`,fmt(aUnique),`${brandB}未覆盖`)}${kpi(`${brandB}独有词`,fmt(bUnique),`${brandA}未覆盖`,'si-down')}</section>
           <section class="si-panel" style="margin-bottom:12px"><div class="si-panel-head"><div><h2>重点品类有效覆盖趋势差距</h2><div class="si-caption">趋势时间独立于全局快照</div></div>${trendControls('brandCompare')}</div><div id="si-brand-compare" class="si-chart"></div></section>
           <section class="si-panel"><div class="si-panel-head"><div><h2>结构差距画像</h2><div class="si-caption"><span class="si-swatch"></span> ${esc(brandA)}　<span class="si-swatch s2"></span> ${esc(brandB)}</div></div></div>${pairedBars([{label:'有效覆盖',own:aCoverage,peer:bCoverage},{label:'Top 10K覆盖',own:snapshotMetric(brandA,'topk','focus'),peer:snapshotMetric(brandB,'topk','focus')},{label:'点击份额',own:aClick,peer:bClick,suffix:'%'},{label:'转化份额',own:aConv,peer:bConv,suffix:'%'},{label:'新词留存率',own:aRetention,peer:bRetention,suffix:'%'}])}</section>`;
       }
       function brandLeaderboard(){
-        const allRows=BRANDS.map(b=>{const seed=hash(b+currentLabel()),added=82+seed%96,lost=64+(seed>>3)%83;return {brand:b,focus:snapshotMetric(b,'coverage','focus'),market:snapshotMetric(b,'coverage','market'),topk:snapshotMetric(b,'topk','focus'),click:snapshotMetric(b,'click'),conv:snapshotMetric(b,'conversion'),ret:snapshotMetric(b,'retention'),momentum:snapshotMetric(b,'momentum'),added,lost,net:added-lost}}).sort((a,b)=>b.focus-a.focus),query=state.leaderboardSearch.trim().toLowerCase();
+        const allRows=BRANDS.map(b=>{const seed=hash(b+currentLabel()),added=82+seed%96,lost=64+(seed>>3)%83;return {brand:b,focus:snapshotMetric(b,'coverage','focus'),market:snapshotMetric(b,'coverage','market'),topk:snapshotMetric(b,'topk','focus'),click:snapshotMetric(b,'click'),conv:snapshotMetric(b,'conversion'),ret:snapshotMetric(b,'retention'),momentum:snapshotMetric(b,'momentum'),added,lost,net:added-lost}}).sort((a,b)=>Number(state.followedBrands.has(b.brand))-Number(state.followedBrands.has(a.brand))||b.focus-a.focus),query=state.leaderboardSearch.trim().toLowerCase();
         const rows=allRows.filter(row=>(!query||row.brand.toLowerCase().includes(query))&&(state.leaderboardGrowth==='all'||(state.leaderboardGrowth==='up'&&row.net>=0)||(state.leaderboardGrowth==='down'&&row.net<0)));
-        return `<section class="si-panel"><div class="si-panel-head"><div><h2>品牌榜单</h2><div class="si-caption">默认按重点品类有效覆盖数排序 · 筛选仅作用于此表</div></div><div class="si-controls"><div class="si-field"><label for="si-leaderboard-search">品牌搜索</label><input id="si-leaderboard-search" value="${esc(state.leaderboardSearch)}" placeholder="输入后按 Enter"></div><div class="si-field"><label for="si-leaderboard-growth">净增长状态</label><select id="si-leaderboard-growth"><option value="all" ${state.leaderboardGrowth==='all'?'selected':''}>全部品牌</option><option value="up" ${state.leaderboardGrowth==='up'?'selected':''}>净增长</option><option value="down" ${state.leaderboardGrowth==='down'?'selected':''}>净流失</option></select></div></div></div><div class="si-table-wrap"><table><thead><tr><th class="si-num">排名</th><th>品牌</th><th class="si-num">有效覆盖</th><th class="si-num">全市场覆盖</th><th class="si-num">Top 10K覆盖</th><th class="si-num">新增覆盖</th><th class="si-num">流失覆盖</th><th class="si-num">净增</th><th class="si-num">排名动量</th><th class="si-num">点击份额</th><th class="si-num">转化份额</th><th class="si-num">效率差</th><th class="si-num">新词留存率</th></tr></thead><tbody>${rows.length?rows.map((r,i)=>`<tr><td class="si-num">${i+1}</td><td class="si-term">${esc(r.brand)}${r.brand==='WAVYTALK'?' '+badge('本品','info'):''}</td><td class="si-num">${fmt(r.focus)}</td><td class="si-num">${fmt(r.market)}</td><td class="si-num">${fmt(r.topk)}</td><td class="si-num si-up">+${fmt(r.added)}</td><td class="si-num si-down">-${fmt(r.lost)}</td><td class="si-num ${r.net>=0?'si-up':'si-down'}">${r.net>=0?'+':''}${fmt(r.net)}</td><td class="si-num ${r.momentum>=0?'si-up':'si-down'}">${r.momentum>=0?'+':''}${r.momentum.toFixed(1)}</td><td class="si-num">${pct(r.click)}</td><td class="si-num">${pct(r.conv)}</td><td class="si-num ${r.conv-r.click>=0?'si-up':'si-down'}">${(r.conv-r.click).toFixed(1)}pp</td><td class="si-num">${pct(r.ret)}</td></tr>`).join(''):'<tr><td colspan="13" class="si-empty">没有符合条件的品牌</td></tr>'}</tbody></table></div></section>`;
+        return `<section class="si-panel"><div class="si-panel-head"><div><h2>品牌榜单</h2><div class="si-caption">我的关注优先，其余按重点品类有效覆盖数排序 · 筛选仅作用于此表</div></div><div class="si-controls"><div class="si-field"><label for="si-leaderboard-search">品牌搜索</label><input id="si-leaderboard-search" value="${esc(state.leaderboardSearch)}" placeholder="输入后按 Enter"></div><div class="si-field"><label for="si-leaderboard-growth">净增长状态</label><select id="si-leaderboard-growth"><option value="all" ${state.leaderboardGrowth==='all'?'selected':''}>全部品牌</option><option value="up" ${state.leaderboardGrowth==='up'?'selected':''}>净增长</option><option value="down" ${state.leaderboardGrowth==='down'?'selected':''}>净流失</option></select></div></div></div><div class="si-table-wrap"><table><thead><tr><th>关注</th><th class="si-num">排名</th><th>品牌</th><th class="si-num">有效覆盖</th><th class="si-num">全市场覆盖</th><th class="si-num">Top 10K覆盖</th><th class="si-num">新增覆盖</th><th class="si-num">流失覆盖</th><th class="si-num">净增</th><th class="si-num">排名动量</th><th class="si-num">点击份额</th><th class="si-num">转化份额</th><th class="si-num">效率差</th><th class="si-num">新词留存率</th></tr></thead><tbody>${rows.length?rows.map((r,i)=>`<tr><td>${followButton('brand',r.brand,true)}</td><td class="si-num">${i+1}</td><td class="si-term"><button type="button" class="si-link" data-open-favorite-type="brand" data-open-favorite-value="${esc(r.brand)}">${esc(r.brand)}</button>${r.brand==='WAVYTALK'?' '+badge('本品','info'):''}</td><td class="si-num">${fmt(r.focus)}</td><td class="si-num">${fmt(r.market)}</td><td class="si-num">${fmt(r.topk)}</td><td class="si-num si-up">+${fmt(r.added)}</td><td class="si-num si-down">-${fmt(r.lost)}</td><td class="si-num ${r.net>=0?'si-up':'si-down'}">${r.net>=0?'+':''}${fmt(r.net)}</td><td class="si-num ${r.momentum>=0?'si-up':'si-down'}">${r.momentum>=0?'+':''}${r.momentum.toFixed(1)}</td><td class="si-num">${pct(r.click)}</td><td class="si-num">${pct(r.conv)}</td><td class="si-num ${r.conv-r.click>=0?'si-up':'si-down'}">${(r.conv-r.click).toFixed(1)}pp</td><td class="si-num">${pct(r.ret)}</td></tr>`).join(''):'<tr><td colspan="14" class="si-empty">没有符合条件的品牌</td></tr>'}</tbody></table></div></section>`;
       }
-      function keywordMiniTable(items){ const query=state.brandKeywordSearch.trim().toLowerCase(),rows=items.filter(item=>(!query||item.term.toLowerCase().includes(query))&&(state.brandKeywordCategory==='all'||item.category===state.brandKeywordCategory)&&(state.brandKeywordTrend==='all'||(state.brandKeywordTrend==='up'&&item.slope<0)||(state.brandKeywordTrend==='down'&&item.slope>=0)));return `<div class="si-table-wrap"><table><thead><tr><th>搜索词</th><th>细分品类</th><th class="si-num">当前排名</th><th>趋势</th><th class="si-num">点击份额</th><th class="si-num">转化份额</th></tr></thead><tbody>${rows.length?rows.map(k=>{const s=snapshotShare(k,state.brand)||{click:0,conv:0};return `<tr><td class="si-term">${esc(k.term)}</td><td>${esc(k.category)}</td><td class="si-num">${snapshotRank(k)==null?'未入榜':fmt(snapshotRank(k))}</td><td>${k.slope<0?badge('上升','up'):badge('下降','down')}</td><td class="si-num">${pct(s.click)}</td><td class="si-num">${pct(s.conv)}</td></tr>`}).join(''):'<tr><td colspan="6" class="si-empty">没有符合条件的品牌关键词</td></tr>'}</tbody></table></div>`; }
+      function keywordMiniTable(items){ const query=state.brandKeywordSearch.trim().toLowerCase(),rows=items.filter(item=>(!query||item.term.toLowerCase().includes(query))&&(state.brandKeywordCategory==='all'||item.category===state.brandKeywordCategory)&&(state.brandKeywordTrend==='all'||(state.brandKeywordTrend==='up'&&item.slope<0)||(state.brandKeywordTrend==='down'&&item.slope>=0))).sort((a,b)=>Number(state.followedKeywords.has(b.term))-Number(state.followedKeywords.has(a.term))||(snapshotRank(a)??Infinity)-(snapshotRank(b)??Infinity));return `<div class="si-table-wrap"><table><thead><tr><th>关注</th><th>搜索词</th><th>细分品类</th><th class="si-num">当前排名</th><th>趋势</th><th class="si-num">点击份额</th><th class="si-num">转化份额</th></tr></thead><tbody>${rows.length?rows.map(k=>{const s=snapshotShare(k,state.brand)||{click:0,conv:0};return `<tr><td>${followButton('keyword',k.term,true)}</td><td class="si-term"><button type="button" class="si-link" data-open-keyword="${esc(k.term)}">${esc(k.term)}</button></td><td>${esc(k.category)}</td><td class="si-num">${snapshotRank(k)==null?'未入榜':fmt(snapshotRank(k))}</td><td>${k.slope<0?badge('上升','up'):badge('下降','down')}</td><td class="si-num">${pct(s.click)}</td><td class="si-num">${pct(s.conv)}</td></tr>`}).join(''):'<tr><td colspan="7" class="si-empty">没有符合条件的品牌关键词</td></tr>'}</tbody></table></div>`; }
       function brandComparisonTable(brands){ return `<div class="si-table-wrap"><table><thead><tr><th>品牌</th><th class="si-num">重点品类有效覆盖</th><th class="si-num">全市场覆盖</th><th class="si-num">点击份额</th><th class="si-num">转化份额</th><th class="si-num">Top 10K覆盖</th></tr></thead><tbody>${brands.map(b=>{const v=BRAND_BASE[b];return `<tr><td class="si-term">${esc(b)}</td><td class="si-num">${fmt(v[0]*.42)}</td><td class="si-num">${fmt(v[0])}</td><td class="si-num">${pct(v[1])}</td><td class="si-num">${pct(v[2])}</td><td class="si-num">${fmt(v[0]*.025)}</td></tr>`}).join('')}</tbody></table></div>`; }
       function drawBrandDetailCharts(){
-        const trend=trendView('brand'), slice=values=>values.slice(-trend.count);
+        const trend=globalTrendView(), slice=values=>values.slice(trend.start,trend.end+1);
         if(state.brandMetric==='share') return lineChart('si-brand-trend',[{name:'点击份额',values:slice(metricSeries(state.brand,'click',state.scope,trend.granularity)),colorIndex:0},{name:'转化份额',values:slice(metricSeries(state.brand,'conversion',state.scope,trend.granularity)),colorIndex:1}],{title:'点击与转化份额趋势',yLabel:'品牌份额（%）',labels:trend.labels});
         if(state.brandMetric==='newlost') { const c=slice(metricSeries(state.brand,'coverage',state.scope,trend.granularity)); return lineChart('si-brand-trend',[{name:'新增覆盖',values:c.map((v,i)=>i?Math.max(20,v-c[i-1]+110):110),colorIndex:4},{name:'流失覆盖',values:c.map((v,i)=>i?Math.max(18,c[i-1]-v+92):88),colorIndex:5}],{title:'新增与流失覆盖趋势',yLabel:'关键词数（词）',labels:trend.labels}); }
         const map={coverage:['coverage','覆盖数（词）'],momentum:['momentum','动量指数'],topk:['topk','Top 10K覆盖（词）'],core:['core','核心词覆盖率（%）'],retention:['retention','新词留存率（%）']};
@@ -560,53 +686,61 @@
       function keywordPage(){
         let html=pageHead('关键词分析','发现、趋势、对比、四象限和明细拆分为独立页面');
         html+=`<nav class="si-tabs" aria-label="关键词分析页面">${Object.entries(KW_TABS).map(([id,name])=>`<button type="button" data-keyword-tab="${id}" aria-selected="${id===state.keywordTab}">${name}</button>`).join('')}</nav>`;
+        html+=favoritesBar('keyword');
         if(state.keywordTab==='discover') html+=keywordDiscover();
         if(state.keywordTab==='trend') html+=keywordTrend();
         if(state.keywordTab==='compare') html+=keywordCompare();
         if(state.keywordTab==='quadrant') html+=keywordQuadrant();
         if(state.keywordTab==='detail') html+=keywordDetail();
         content.innerHTML=html;
-        if(state.keywordTab==='trend') queueCharts(()=>{const trend=trendView('keyword');lineChart('si-keyword-trend',[{name:state.keyword,values:rankSeries(kw(state.keyword),trend.granularity).slice(-trend.count),colorIndex:0}],{title:`${state.keyword} 搜索频率排名趋势`,yLabel:'搜索频率排名（越小越好）',rank:true,labels:trend.labels})});
-        if(state.keywordTab==='compare'&&state.compareKeywords.length>=2) queueCharts(()=>{const trend=trendView('keywordCompare');lineChart('si-keyword-compare',state.compareKeywords.map((term,i)=>({name:term,values:rankSeries(kw(term),trend.granularity).slice(-trend.count),colorIndex:i})),{title:'多关键词搜索频率排名趋势',yLabel:'搜索频率排名（越小越好）',rank:true,labels:trend.labels})});
+        decorateDefinitions();
+        if(state.keywordTab==='trend') queueCharts(()=>{const trend=globalTrendView();lineChart('si-keyword-trend',[{name:state.keyword,values:rankSeries(kw(state.keyword),trend.granularity).slice(trend.start,trend.end+1),colorIndex:0}],{title:`${state.keyword} 搜索频率排名趋势`,yLabel:'搜索频率排名（越小越好）',rank:true,labels:trend.labels})});
+        if(state.keywordTab==='compare'&&state.compareKeywords.length>=2) queueCharts(()=>{const trend=globalTrendView();lineChart('si-keyword-compare',state.compareKeywords.map((term,i)=>({name:term,values:rankSeries(kw(term),trend.granularity).slice(trend.start,trend.end+1),colorIndex:i})),{title:'多关键词搜索频率排名趋势',yLabel:'搜索频率排名（越小越好）',rank:true,labels:trend.labels})});
         if(state.keywordTab==='quadrant') queueCharts(()=>scatterChart());
       }
       function keywordDiscover(){
         const categories=[...new Set(KEYWORDS.map(item=>item.category))], kinds=[...new Set(KEYWORDS.map(item=>item.kind))], query=state.opportunitySearch.trim().toLowerCase();
-        const rows=KEYWORDS.filter(item=>(state.opportunityCategory==='all'||item.category===state.opportunityCategory)&&(state.opportunityKind==='all'||item.kind===state.opportunityKind)&&(!query||item.term.toLowerCase().includes(query)||[item.category,item.kind,item.people,item.hair,item.scene].filter(Boolean).join(' ').toLowerCase().includes(query))).sort((a,b)=>b.opp-a.opp);
+        const rows=KEYWORDS.filter(item=>(state.opportunityCategory==='all'||item.category===state.opportunityCategory)&&(state.opportunityKind==='all'||item.kind===state.opportunityKind)&&(!query||item.term.toLowerCase().includes(query)||[item.category,item.kind,item.people,item.hair,item.scene].filter(Boolean).join(' ').toLowerCase().includes(query))).sort((a,b)=>Number(state.followedKeywords.has(b.term))-Number(state.followedKeywords.has(a.term))||b.opp-a.opp);
         return `<section class="si-kpis">${kpi('重点品类词',fmt(48620),'Top 200K候选池')}${kpi('本期市场新词',fmt(1322),'本期出现、上期未出现')}${kpi('高机会词',fmt(184),'机会分 ≥ 80')}${kpi('分类待优化','14.7%','“其他+未明确”低于20%阈值')}</section>
           <div class="si-grid-2"><section class="si-panel"><div class="si-panel-head"><div><h2>机会子品类</h2><div class="si-caption">同一品类维度内部互斥且完全穷尽</div></div></div>${bars([{label:'吹风机',value:86},{label:'吹风梳/热风梳',value:82},{label:'多功能造型器',value:91},{label:'直发工具',value:74},{label:'卷发工具',value:77}])}</section>
           <section class="si-panel"><div class="si-panel-head"><div><h2>时效热词阶段</h2><div class="si-caption">日历事件与突发热点分开识别</div></div></div>${bars([{label:'返校季·爆发',value:88,color:'green'},{label:'万圣节·预热',value:62,color:'amber'},{label:'黑五·预热',value:38},{label:'圣诞节·未启动',value:17}])}</section></div>
-          <section class="si-panel"><div class="si-panel-head"><div><h2>关键词机会列表</h2><div class="si-caption">${currentLabel()} 快照 · 下列筛选仅作用于此列表</div></div><div class="si-controls"><div class="si-field"><label for="si-opp-search">搜索词 / 标签</label><input id="si-opp-search" value="${esc(state.opportunitySearch)}" placeholder="输入搜索词或语义标签"></div><div class="si-field"><label for="si-opp-category">搜索词类别</label><select id="si-opp-category"><option value="all">全部类别</option>${categories.map(value=>`<option ${value===state.opportunityCategory?'selected':''}>${esc(value)}</option>`).join('')}</select></div><div class="si-field"><label for="si-opp-kind">关键词类型</label><select id="si-opp-kind"><option value="all">全部类型</option>${kinds.map(value=>`<option ${value===state.opportunityKind?'selected':''}>${esc(value)}</option>`).join('')}</select></div><div class="si-field"><label for="si-opp-brand">分析品牌</label>${searchableInput('si-opp-brand',state.opportunityBrand,BRANDS,'留空查看Top 3品牌')}</div></div></div><div class="si-table-wrap"><table><thead><tr><th>搜索词</th><th>细分品类</th><th>关键词类型</th><th class="si-num">当前排名</th><th>排名趋势</th><th class="si-num">机会分</th><th>品牌覆盖</th></tr></thead><tbody>${rows.map(k=>{const semantic=secondaryTags(k),share=state.opportunityBrand?snapshotShare(k,state.opportunityBrand):null;return `<tr><td><button type="button" class="si-link" data-open-keyword="${esc(k.term)}">${esc(k.term)}</button>${semantic?`<div class="si-tags">${semantic}</div>`:''}</td><td>${esc(k.category)}</td><td>${esc(k.kind)}</td><td class="si-num">${snapshotRank(k)==null?'未入榜':fmt(snapshotRank(k))}</td><td>${k.slope<0?badge('上升','up'):badge('下降','down')}</td><td class="si-num">${k.opp}</td><td>${state.opportunityBrand?(share&&share.click>0?badge(`${state.opportunityBrand}已覆盖`,'info'):badge(`${state.opportunityBrand}未覆盖`,'warn')):esc(k.top.join(' · '))}</td></tr>`}).join('')}</tbody></table></div></section>`;
+          <section class="si-panel" id="si-keyword-opportunity-list"><div class="si-panel-head"><div><h2>关键词机会列表</h2><div class="si-caption">${currentLabel()} 快照 · 我的关注优先，其余按机会分排序</div></div><div class="si-controls"><div class="si-field"><label for="si-opp-search">搜索词 / 标签</label><input id="si-opp-search" value="${esc(state.opportunitySearch)}" placeholder="输入搜索词或语义标签"></div><div class="si-field"><label for="si-opp-category">搜索词类别</label><select id="si-opp-category"><option value="all">全部类别</option>${categories.map(value=>`<option ${value===state.opportunityCategory?'selected':''}>${esc(value)}</option>`).join('')}</select></div><div class="si-field"><label for="si-opp-kind">关键词类型</label><select id="si-opp-kind"><option value="all">全部类型</option>${kinds.map(value=>`<option ${value===state.opportunityKind?'selected':''}>${esc(value)}</option>`).join('')}</select></div><div class="si-field"><label for="si-opp-brand">分析品牌</label>${searchableInput('si-opp-brand',state.opportunityBrand,BRANDS,'留空查看Top 3品牌',true,[...state.followedBrands])}</div></div></div><div class="si-table-wrap"><table><thead><tr><th>关注</th><th>搜索词</th><th>细分品类</th><th>关键词类型</th><th class="si-num">当前排名</th><th>排名趋势</th><th class="si-num">机会分</th><th>品牌覆盖</th></tr></thead><tbody>${rows.map(k=>{const semantic=secondaryTags(k),share=state.opportunityBrand?snapshotShare(k,state.opportunityBrand):null;return `<tr><td>${followButton('keyword',k.term,true)}</td><td><button type="button" class="si-link" data-open-keyword="${esc(k.term)}">${esc(k.term)}</button>${semantic?`<div class="si-tags">${semantic}</div>`:''}</td><td>${esc(k.category)}</td><td>${esc(k.kind)}</td><td class="si-num">${snapshotRank(k)==null?'未入榜':fmt(snapshotRank(k))}</td><td>${k.slope<0?badge('上升','up'):badge('下降','down')}</td><td class="si-num">${k.opp}</td><td>${state.opportunityBrand?(share&&share.click>0?badge(`${state.opportunityBrand}已覆盖`,'info'):badge(`${state.opportunityBrand}未覆盖`,'warn')):esc(k.top.join(' · '))}</td></tr>`}).join('')}</tbody></table></div></section>`;
       }
       function keywordTrend(){
-        const item=kw(state.keyword), trend=trendView('keyword'), values=rankSeries(item,trend.granularity).slice(-trend.count), valid=values.filter(v=>v!=null), first=valid[0],last=valid.at(-1),change=first-last;
-        return `<div class="si-controls" style="margin-bottom:12px"><div class="si-field"><label for="si-keyword">搜索词</label>${searchableInput('si-keyword',state.keyword,KEYWORD_RECOMMENDATIONS,'输入任意搜索词',false)}</div></div>
+        const item=kw(state.keyword), trend=globalTrendView(), values=rankSeries(item,trend.granularity).slice(trend.start,trend.end+1), valid=values.filter(v=>v!=null), first=valid[0],last=valid.at(-1),change=first-last;
+        return `<div class="si-controls" style="margin-bottom:12px"><div class="si-field"><label for="si-keyword">搜索词</label>${searchableInput('si-keyword',state.keyword,KEYWORDS.map(item=>item.term),'输入任意搜索词',false,[...state.followedKeywords])}</div>${followButton('keyword',item.term)}</div>
           <section class="si-kpis">${kpi('趋势末期排名',`#${fmt(last)}`,`${change>=0?'提升':'下降'} ${fmt(Math.abs(change))} 名`,change>=0?'si-up':'si-down')}${kpi('趋势范围',`近${trend.count}${trend.granularity==='day'?'天':trend.granularity==='week'?'周':'个月'}`,`${valid.length}/${values.length} 个周期进入榜单`)}${kpi('细分品类',item.category,'一级维度单标签')}${kpi('机会分',item.opp,'排名作为市场规模代理')}</section>
-          <section class="si-panel"><div class="si-panel-head"><div><h2>${esc(item.term)} 排名变化</h2><div class="si-caption">排名越小越好；未进入榜单时曲线断开</div></div>${trendControls('keyword',true)}</div><div id="si-keyword-trend" class="si-chart"></div></section>
+          <section class="si-panel"><div class="si-panel-head"><div><h2>${esc(item.term)} 排名变化</h2><div class="si-caption">时间继承顶部筛选：${currentGroup().name}颗粒度，截止 ${currentLabel()}；未入榜时曲线断开</div></div></div><div id="si-keyword-trend" class="si-chart"></div></section>
           <div class="si-footnote">明细数据已拆分至“关键词明细”独立页面。</div>`;
       }
       function keywordCompare(){
-        return `<section class="si-panel" style="margin-bottom:12px"><div class="si-panel-head"><div><h2>录入对比关键词</h2><div class="si-caption">手动录入2–5个关键词；不提供固定关键词清单</div></div></div><div class="si-add-row"><div class="si-field"><label for="si-compare-keyword-input">搜索词</label>${searchableInput('si-compare-keyword-input','',KEYWORD_RECOMMENDATIONS,'输入搜索词后按 Enter 添加',false)}</div><button type="button" class="si-action" data-add-compare-keyword>添加</button></div><div class="si-token-list">${state.compareKeywords.map(term=>`<span class="si-token">${esc(term)}<button type="button" aria-label="移除${esc(term)}" data-remove-compare-keyword="${esc(term)}">×</button></span>`).join('')}</div></section>
-          <section class="si-panel"><div class="si-panel-head"><div><h2>关键词排名趋势对比</h2><div class="si-caption">趋势时间独立于全局快照</div></div>${trendControls('keywordCompare')}</div>${state.compareKeywords.length>=2?'<div id="si-keyword-compare" class="si-chart"></div>':'<div class="si-empty">请先录入至少两个关键词</div>'}</section>`;
+        return `<section class="si-panel" style="margin-bottom:12px"><div class="si-panel-head"><div><h2>录入对比关键词</h2><div class="si-caption">手动录入2–5个关键词；关注词在推荐中优先</div></div></div><div class="si-add-row"><div class="si-field"><label for="si-compare-keyword-input">搜索词</label>${searchableInput('si-compare-keyword-input','',KEYWORDS.map(item=>item.term),'输入搜索词后按 Enter 添加',false,[...state.followedKeywords])}</div><button type="button" class="si-action" data-add-compare-keyword>添加</button></div><div class="si-token-list">${state.compareKeywords.map(term=>`<span class="si-token">${esc(term)} ${followButton('keyword',term,true)}<button type="button" aria-label="移除${esc(term)}" data-remove-compare-keyword="${esc(term)}">×</button></span>`).join('')}</div></section>
+          <section class="si-panel"><div class="si-panel-head"><div><h2>关键词排名趋势对比</h2><div class="si-caption">时间继承顶部筛选：${currentGroup().name}颗粒度，截止 ${currentLabel()}</div></div></div>${state.compareKeywords.length>=2?'<div id="si-keyword-compare" class="si-chart"></div>':'<div class="si-empty">请先录入至少两个关键词</div>'}</section>`;
+      }
+      function quadrantData(){
+        const rows=KEYWORDS.map(item=>{const share=snapshotShare(item,state.quadrantBrand)||{click:0,conv:0};return {item,click:share.click,conv:share.conv,rank:snapshotRank(item)}}).filter(row=>row.click>0&&row.rank!=null);
+        const median=values=>{const sorted=values.slice().sort((a,b)=>a-b);return sorted[Math.floor(sorted.length/2)]||0}, mx=median(rows.map(row=>row.click)), my=median(rows.map(row=>row.conv));
+        return {mx,my,rows:rows.map(row=>({...row,quadrant:row.click>=mx?(row.conv>=my?'优势词':'承接问题'):(row.conv>=my?'放量机会':'低效观察')})).sort((a,b)=>Number(state.followedKeywords.has(b.item.term))-Number(state.followedKeywords.has(a.item.term))||a.rank-b.rank)};
       }
       function keywordQuadrant(){
         const selectedLabel=state.quadrantBrand||'全部Top 3品牌合计',categories=[...new Set(KEYWORDS.map(item=>item.category))],query=state.quadrantTableSearch.trim().toLowerCase();
         const opportunityRows=KEYWORDS.filter(item=>(!state.quadrantBrand||(snapshotShare(item,state.quadrantBrand)?.click||0)===0)&&(!query||item.term.toLowerCase().includes(query))&&(state.quadrantTableCategory==='all'||item.category===state.quadrantTableCategory)).sort((a,b)=>b.opp-a.opp).slice(0,10);
-        return `<div class="si-controls" style="margin-bottom:12px"><div class="si-field"><label for="si-quadrant-brand">分析品牌</label>${searchableInput('si-quadrant-brand',state.quadrantBrand,BRANDS,'留空查看Top 3合计')}</div></div>
-          <section class="si-panel"><div class="si-panel-head"><div><h2>${esc(selectedLabel)} 点击×转化四象限</h2><div class="si-caption">固定展示当前快照中所有有份额的关键词</div></div></div><div class="si-legend"><span><i class="si-swatch"></i>排名上升</span><span><i class="si-swatch s2"></i>排名下降</span><span>右上：优势词</span><span>右下：承接问题</span><span>左上：放量机会</span></div><div id="si-quadrant" class="si-chart"></div></section>
+        const quadrant=quadrantData();
+        return `<div class="si-controls" style="margin-bottom:12px"><div class="si-field"><label for="si-quadrant-brand">分析品牌</label>${searchableInput('si-quadrant-brand',state.quadrantBrand,BRANDS,'留空查看Top 3合计',true,[...state.followedBrands])}</div></div>
+          <section class="si-panel"><div class="si-panel-head"><div><h2>${esc(selectedLabel)} 点击×转化四象限</h2><div class="si-caption">${currentLabel()} 快照 · 分割线为当前词集点击与转化份额中位数</div></div></div><div class="si-legend"><span><i class="si-swatch"></i>排名上升</span><span><i class="si-swatch s2"></i>排名下降</span><span>右上：优势词</span><span>右下：承接问题</span><span>左上：放量机会</span><span>左下：低效观察</span></div><div id="si-quadrant" class="si-chart"></div><div class="si-drill-detail"><h3>四象限关键词清单 ${help('四象限')}</h3><div class="si-table-wrap"><table><thead><tr><th>关注</th><th>搜索词</th><th>象限</th><th>细分品类</th><th class="si-num">搜索排名</th><th class="si-num">点击份额</th><th class="si-num">转化份额</th><th class="si-num">效率差</th></tr></thead><tbody>${quadrant.rows.map(row=>`<tr><td>${followButton('keyword',row.item.term,true)}</td><td><button type="button" class="si-link" data-open-keyword="${esc(row.item.term)}">${esc(row.item.term)}</button></td><td>${badge(row.quadrant,row.quadrant==='优势词'?'up':row.quadrant==='承接问题'?'down':row.quadrant==='放量机会'?'info':'warn')}</td><td>${esc(row.item.category)}</td><td class="si-num">${fmt(row.rank)}</td><td class="si-num">${pct(row.click)}</td><td class="si-num">${pct(row.conv)}</td><td class="si-num ${row.conv-row.click>=0?'si-up':'si-down'}">${(row.conv-row.click).toFixed(1)}pp</td></tr>`).join('')}</tbody></table></div></div></section>
           <section class="si-panel" style="margin-top:12px"><div class="si-panel-head"><div><h2>${state.quadrantBrand?`${esc(state.quadrantBrand)}未覆盖机会看板`:'全市场高机会词看板'}</h2><div class="si-caption">与四象限并列展示 · 筛选仅作用于右侧机会表</div></div><div class="si-controls"><div class="si-field"><label for="si-quadrant-table-search">搜索词</label><input id="si-quadrant-table-search" value="${esc(state.quadrantTableSearch)}" placeholder="输入后按 Enter"></div><div class="si-field"><label for="si-quadrant-table-category">细分品类</label><select id="si-quadrant-table-category"><option value="all">全部品类</option>${categories.map(value=>`<option ${value===state.quadrantTableCategory?'selected':''}>${esc(value)}</option>`).join('')}</select></div>${help('机会分')}</div></div><div class="si-grid-2"><div>${bars([{label:'多功能造型器',value:91},{label:'吹风机',value:86},{label:'吹风梳/热风梳',value:82},{label:'卷发工具',value:77}])}</div><div class="si-table-wrap"><table><thead><tr><th>搜索词</th><th>细分品类</th><th class="si-num">搜索排名</th><th class="si-num">机会分</th></tr></thead><tbody>${opportunityRows.length?opportunityRows.map(item=>`<tr><td class="si-term">${esc(item.term)}</td><td>${esc(item.category)}</td><td class="si-num">${snapshotRank(item)==null?'未入榜':fmt(snapshotRank(item))}</td><td class="si-num">${item.opp}</td></tr>`).join(''):'<tr><td colspan="4" class="si-empty">没有符合条件的机会词</td></tr>'}</tbody></table></div></div></section>`;
       }
       function keywordDetail(){
         const item=!state.detailKeyword||state.detailKeyword==='all'?null:kw(state.detailKeyword), idx=currentIndex(), source=item?[item]:KEYWORDS;
-        let rows=source.map(entry=>({label:currentLabel(),item:entry,rank:snapshotRank(entry),share:snapshotShare(entry,state.detailBrand),index:idx}));
+        let rows=source.map(entry=>({label:currentLabel(),item:entry,rank:snapshotRank(entry),share:snapshotShare(entry,state.detailBrand),index:idx})).sort((a,b)=>Number(state.followedKeywords.has(b.item.term))-Number(state.followedKeywords.has(a.item.term))||(a.rank??Infinity)-(b.rank??Infinity));
         if(state.detailStatus==='covered') rows=rows.filter(r=>r.share&&r.share.click>0);
         if(state.detailStatus==='uncovered') rows=rows.filter(r=>r.rank!=null&&(!r.share||r.share.click===0));
         if(state.detailStatus==='missing') rows=rows.filter(r=>r.rank==null);
-        return `<div class="si-controls" style="margin-bottom:12px"><div class="si-field"><label for="si-detail-keyword">搜索词搜索</label>${searchableInput('si-detail-keyword',state.detailKeyword,KEYWORDS.map(item=>item.term),'留空查看全部搜索词')}</div><div class="si-field"><label for="si-detail-brand">品牌搜索</label>${searchableInput('si-detail-brand',state.detailBrand,BRANDS,'留空汇总Top 3品牌')}</div><div class="si-field"><label for="si-detail-status">状态</label><select id="si-detail-status"><option value="all" ${state.detailStatus==='all'?'selected':''}>全部</option><option value="covered" ${state.detailStatus==='covered'?'selected':''}>品牌已覆盖</option><option value="uncovered" ${state.detailStatus==='uncovered'?'selected':''}>品牌未覆盖</option><option value="missing" ${state.detailStatus==='missing'?'selected':''}>未进入榜单</option></select></div></div>
+        return `<div class="si-controls" style="margin-bottom:12px"><div class="si-field"><label for="si-detail-keyword">搜索词搜索</label>${searchableInput('si-detail-keyword',state.detailKeyword,KEYWORDS.map(item=>item.term),'留空查看全部搜索词',true,[...state.followedKeywords])}</div><div class="si-field"><label for="si-detail-brand">品牌搜索</label>${searchableInput('si-detail-brand',state.detailBrand,BRANDS,'留空汇总Top 3品牌',true,[...state.followedBrands])}</div><div class="si-field"><label for="si-detail-status">状态</label><select id="si-detail-status"><option value="all" ${state.detailStatus==='all'?'selected':''}>全部</option><option value="covered" ${state.detailStatus==='covered'?'selected':''}>品牌已覆盖</option><option value="uncovered" ${state.detailStatus==='uncovered'?'selected':''}>品牌未覆盖</option><option value="missing" ${state.detailStatus==='missing'?'selected':''}>未进入榜单</option></select></div></div>
           <section class="si-panel"><div class="si-panel-head"><div><h2>关键词明细</h2><div class="si-caption">${currentLabel()} 快照 · 一行代表一个关键词 × 一个周期 × 一个所选品牌</div></div>${badge(`${rows.length} 条记录`,'info')}</div>
-          <div class="si-table-wrap"><table><thead><tr><th>时间</th><th class="si-num">搜索排名</th><th>搜索词</th><th>品牌</th><th class="si-num">点击份额</th><th class="si-num">转化份额</th><th>状态</th><th>Top 3</th></tr></thead><tbody>${rows.map((r,idx)=>{
+          <div class="si-table-wrap"><table><thead><tr><th>关注</th><th>时间</th><th class="si-num">搜索排名</th><th>搜索词</th><th>品牌</th><th class="si-num">点击份额</th><th class="si-num">转化份额</th><th>状态</th><th>Top 3</th></tr></thead><tbody>${rows.map((r,idx)=>{
             const brandCovered=r.share&&r.share.click>0, open=state.openDetail===idx;
-            return `<tr><td>${esc(r.label)}</td><td class="si-num">${r.rank==null?'未进入榜单':fmt(r.rank)}</td><td class="si-term">${esc(r.item.term)}</td><td>${esc(state.detailBrand||'全部Top 3品牌')}</td><td class="si-num">${r.share?pct(r.share.click):'—'}</td><td class="si-num">${r.share?pct(r.share.conv):'—'}</td><td>${r.rank==null?badge('未进入榜单','down'):!state.detailBrand?badge('Top 3汇总','info'):brandCovered?badge('已覆盖','up'):badge('未进入Top 3','warn')}</td><td><button type="button" class="si-link" data-detail-row="${idx}" ${r.rank==null?'disabled':''}>${open?'收起':'展开'}</button></td></tr>${open&&r.rank!=null?`<tr class="si-detail-row"><td colspan="8"><div class="si-top3">${r.item.top.map((b,j)=>{const s=shareAt(r.item,b,r.index);return `<div><strong>${j+1}. ${esc(b)}</strong><br><span>ASIN · B0${String(hash(b+r.item.term)).slice(0,8)}</span><br><span>点击 ${pct(s.click)} · 转化 ${pct(s.conv)}</span></div>`}).join('')}</div></td></tr>`:''}`;
+            return `<tr><td>${followButton('keyword',r.item.term,true)}</td><td>${esc(r.label)}</td><td class="si-num">${r.rank==null?'未进入榜单':fmt(r.rank)}</td><td class="si-term"><button type="button" class="si-link" data-open-keyword="${esc(r.item.term)}">${esc(r.item.term)}</button></td><td>${esc(state.detailBrand||'全部Top 3品牌')}</td><td class="si-num">${r.share?pct(r.share.click):'—'}</td><td class="si-num">${r.share?pct(r.share.conv):'—'}</td><td>${r.rank==null?badge('未进入榜单','down'):!state.detailBrand?badge('Top 3汇总','info'):brandCovered?badge('已覆盖','up'):badge('未进入Top 3','warn')}</td><td><button type="button" class="si-link" data-detail-row="${idx}" ${r.rank==null?'disabled':''}>${open?'收起':'展开'}</button></td></tr>${open&&r.rank!=null?`<tr class="si-detail-row"><td colspan="9"><div class="si-top3">${r.item.top.map((b,j)=>{const s=shareAt(r.item,b,r.index);return `<div><strong>${j+1}. ${esc(b)}</strong><br><span>ASIN · B0${String(hash(b+r.item.term)).slice(0,8)}</span><br><span>点击 ${pct(s.click)} · 转化 ${pct(s.conv)}</span></div>`}).join('')}</div></td></tr>`:''}`;
           }).join('')}</tbody></table></div></section>
           <div class="si-footnote">品牌留空时汇总Top 3品牌份额；关键词未入榜时显示“—”；指定品牌未进入Top 3时显示0%。</div>`;
       }
@@ -644,15 +778,45 @@
       let chartJob=null;
       function queueCharts(fn){ chartJob=fn; requestAnimationFrame(()=>chartJob&&chartJob()); }
       function render(){ renderGlobal(); if(state.page==='overview')overview(); if(state.page==='brand')brandPage(); if(state.page==='keyword')keywordPage(); }
+      function syncNavigation(){ root.querySelectorAll('[data-page]').forEach(button=>button.setAttribute('aria-selected',String(button.dataset.page===state.page))); }
+      function performDrill(encoded){
+        const [page,tab,metric,anchor]=String(encoded||'').split(':');
+        state.page=page||'overview'; state.drillContext={page:state.page,metric:metric||'',source:'overview'};
+        if(page==='brand'){state.brandTab=tab||'detail';if(metric&&metric!=='none')state.brandMetric=metric;}
+        if(page==='keyword'){state.keywordTab=tab||'discover';}
+        syncNavigation();render();
+        requestAnimationFrame(()=>requestAnimationFrame(()=>root.querySelector(`#${anchor}`)?.scrollIntoView({behavior:'smooth',block:'start'})));
+      }
+      function toggleFavorite(type,value){
+        const set=type==='brand'?state.followedBrands:state.followedKeywords;
+        if(set.has(value))set.delete(value);else set.add(value);saveFavorites();
+        if(state.page==='brand')brandPage();else if(state.page==='keyword')keywordPage();
+      }
+      function openFavorite(type,value){
+        if(type==='brand'){state.page='brand';state.brandTab='detail';state.brand=value;}
+        else{state.page='keyword';state.keywordTab='trend';state.keyword=value;}
+        syncNavigation();render();
+      }
+      function showTooltip(target){
+        const text=target?.dataset?.tooltip;if(!text)return;tooltipEl.textContent=text;tooltipEl.style.display='block';
+        const rect=target.getBoundingClientRect(), width=tooltipEl.offsetWidth, height=tooltipEl.offsetHeight;
+        tooltipEl.style.left=`${Math.max(8,Math.min(window.innerWidth-width-8,rect.right-width))}px`;
+        tooltipEl.style.top=`${Math.max(8,rect.top-height-8)}px`;
+      }
+      function hideTooltip(){tooltipEl.style.display='none';}
 
       root.addEventListener('click',e=>{
+        if(e.target.closest('.si-help'))return;
+        const follow=e.target.closest('[data-follow-type]');if(follow){toggleFavorite(follow.dataset.followType,follow.dataset.followValue);return;}
+        const favorite=e.target.closest('[data-open-favorite-type]');if(favorite){openFavorite(favorite.dataset.openFavoriteType,favorite.dataset.openFavoriteValue);return;}
+        const drill=e.target.closest('[data-drill]');if(drill&&!e.target.closest('button,input,select,a')){performDrill(drill.dataset.drill);return;}
         const page=e.target.closest('[data-page]'); if(page){state.page=page.dataset.page;root.querySelectorAll('[data-page]').forEach(b=>b.setAttribute('aria-selected',String(b===page)));render();return;}
         const gran=e.target.closest('[data-granularity]'); if(gran){state.granularity=gran.dataset.granularity;state.openDetail=null;render();return;}
         const trendGran=e.target.closest('[data-trend-granularity]'); if(trendGran){const key=trendGran.dataset.trendKey,granularity=trendGran.dataset.trendGranularity;state.trends[key].granularity=granularity;state.trends[key].range=granularity==='day'?30:granularity==='week'?8:12;render();return;}
         const bt=e.target.closest('[data-brand-tab]'); if(bt){state.brandTab=bt.dataset.brandTab;render();return;}
         const kt=e.target.closest('[data-keyword-tab]'); if(kt){state.keywordTab=kt.dataset.keywordTab;state.openDetail=null;render();return;}
         const sc=e.target.closest('[data-scope]'); if(sc){state.scope=sc.dataset.scope;render();return;}
-        const open=e.target.closest('[data-open-keyword]'); if(open){state.keyword=open.dataset.openKeyword;state.keywordTab='trend';render();return;}
+        const open=e.target.closest('[data-open-keyword]'); if(open){state.page='keyword';state.keyword=open.dataset.openKeyword;state.keywordTab='trend';syncNavigation();render();return;}
         const detail=e.target.closest('[data-detail-row]'); if(detail){const i=Number(detail.dataset.detailRow);state.openDetail=state.openDetail===i?null:i;keywordPage();return;}
         const addKeyword=e.target.closest('[data-add-compare-keyword]'); if(addKeyword){addCompareKeyword(root.querySelector('#si-compare-keyword-input')?.value);return;}
         const removeKeyword=e.target.closest('[data-remove-compare-keyword]'); if(removeKeyword){state.compareKeywords=state.compareKeywords.filter(term=>term!==removeKeyword.dataset.removeCompareKeyword);keywordPage();return;}
@@ -668,6 +832,7 @@
         if(id==='si-detail-brand'){const value=raw?matchValue(raw,BRANDS):'';if((value||!raw)&&value!==state.detailBrand){state.detailBrand=value;state.openDetail=null;keywordPage();}}
       });
       root.addEventListener('keydown',e=>{
+        if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-drill]')){e.preventDefault();performDrill(e.target.dataset.drill);return;}
         if(e.key!=='Enter')return;
         if(e.target.id==='si-overview-table-search'){state.overviewTableSearch=e.target.value;overview();}
         if(e.target.id==='si-brand-keyword-search'){state.brandKeywordSearch=e.target.value;brandPage();}
@@ -706,6 +871,10 @@
         if(id==='si-detail-status'){state.detailStatus=e.target.value;state.openDetail=null;keywordPage();}
         if(e.target.matches('[data-trend-range]')){const key=e.target.dataset.trendRange;state.trends[key].range=Number(e.target.value);render();}
       });
+      root.addEventListener('mouseover',e=>{const target=e.target.closest('[data-tooltip]');if(target)showTooltip(target);});
+      root.addEventListener('mouseout',e=>{const target=e.target.closest('[data-tooltip]');if(target&&!target.contains(e.relatedTarget))hideTooltip();});
+      root.addEventListener('focusin',e=>{const target=e.target.closest('[data-tooltip]');if(target)showTooltip(target);});
+      root.addEventListener('focusout',e=>{if(e.target.closest('[data-tooltip]'))hideTooltip();});
       const observer=new ResizeObserver(()=>{if(chartJob)requestAnimationFrame(()=>chartJob&&chartJob())}); observer.observe(root);
       render();
     })();
