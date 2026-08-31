@@ -91,6 +91,14 @@
       background: var(--si-soft);
       white-space: nowrap;
     }
+    #si-replanned-demo .si-real-flag {
+      color: var(--si-green);
+      border: 1px solid var(--si-green-soft);
+      background: var(--si-green-soft);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
     #si-replanned-demo .si-demo-flag { color: var(--si-amber); border-color: transparent; background: var(--si-amber-soft); }
     #si-replanned-demo .si-global {
       display: flex;
@@ -357,7 +365,7 @@
         <button type="button" data-page="brand" aria-selected="false">品牌分析</button>
         <button type="button" data-page="keyword" aria-selected="false">关键词分析</button>
       </nav>
-      <span class="si-demo-flag">模拟数据</span>
+      <span class="si-demo-flag" id="si-data-flag">模拟数据</span>
       <span class="si-market">美国站</span>
     </header>
     <div class="si-global">
@@ -385,12 +393,12 @@
       }
       const storedFavorites = loadFavorites();
 
-      const BRANDS = ['WAVYTALK','TYMO',"L'ANGE",'Dyson','Shark','Revlon','CHI','Remington','Conair','SHEGLAM'];
+      let BRANDS = ['WAVYTALK','TYMO',"L'ANGE",'Dyson','Shark','Revlon','CHI','Remington','Conair','SHEGLAM'];
       const BRAND_BASE = {
         WAVYTALK:[1760,18.2,13.3,64], TYMO:[1190,15.6,11.3,58], "L'ANGE":[980,14.8,12.6,55], Dyson:[860,19.4,17.2,61],
         Shark:[810,18.6,16.5,60], Revlon:[760,13.9,12.4,52], CHI:[590,12.7,11.8,48], Remington:[510,11.5,10.9,44], Conair:[720,12.9,11.4,49], SHEGLAM:[340,9.8,8.6,43]
       };
-      const KEYWORDS = [
+      let KEYWORDS = [
         {term:'hair dryer',category:'吹风机',kind:'品类词',people:'未明确',scene:'未明确',rank:475,slope:-.17,own:true,click:11.0,conv:5.8,opp:72,top:['Dyson','Shark','WAVYTALK']},
         {term:'blow dryer',category:'吹风机',kind:'品类词',people:'未明确',scene:'未明确',rank:1366,slope:-.22,own:true,click:17.5,conv:10.3,opp:78,top:['WAVYTALK','Revlon','Conair']},
         {term:'thermal brush',category:'吹风梳/热风梳',kind:'产品词',people:'未明确',scene:'快速造型',rank:6847,slope:.09,own:true,click:23.1,conv:14.5,opp:67,top:['WAVYTALK','TYMO',"L'ANGE"]},
@@ -407,11 +415,73 @@
         {term:'hair diffuser',category:'美发工具配件',kind:'配件/替换词',people:'未明确',hair:'卷曲发质',scene:'未明确',rank:11174,slope:-.07,own:true,click:15.7,conv:.5,opp:74,top:['WAVYTALK','Segbeauty','Bellissima']}
       ];
       const KEYWORD_RECOMMENDATIONS = KEYWORDS.slice(0,8).map(item=>item.term);
-      const GROUPS = {
+      let GROUPS = {
         day:{name:'日',window:'近30天',labels:Array.from({length:30},(_,i)=>new Date(Date.UTC(2026,6,26+i)).toISOString().slice(0,10))},
         week:{name:'周',window:'近8周',labels:['2026-W24','2026-W25','2026-W26','2026-W27','2026-W28','2026-W29','2026-W30','2026-W31']},
         month:{name:'月',window:'近12个月',labels:['2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08']}
       };
+      const FALLBACK_GROUPS = JSON.parse(JSON.stringify(GROUPS));
+      const REAL = {active:false, byPeriod:{day:new Map(),week:new Map(),month:new Map()}};
+      const DATA_ROOT = './data';
+      const normalise = value => String(value||'').trim().toLowerCase().replace(/\s+/g,' ');
+
+      function canonicalBrand(value){
+        const key=String(value||'').trim().toLowerCase().replace(/[’']/g,'').replace(/\s+/g,' ');
+        if(['wavytalk','wavy talk'].includes(key)) return 'WAVYTALK';
+        if(['tymo'].includes(key)) return 'TYMO';
+        if(['lange','l ange'].includes(key)) return "L'ANGE";
+        if(key==='sheglam') return 'SHEGLAM';
+        return String(value||'').trim();
+      }
+      function sameBrand(a,b){return canonicalBrand(a).toLowerCase()===canonicalBrand(b).toLowerCase();}
+      function recordFor(item,granularity,index){
+        if(!REAL.active) return null;
+        const label=(GROUPS[granularity]?.labels||[])[index];
+        return REAL.byPeriod[granularity]?.get(label)?.get(normalise(item.term))||null;
+      }
+      function actualChange(item,granularity=state?.granularity,index=currentIndex?.()){
+        const current=recordFor(item,granularity,index), previous=recordFor(item,granularity,index-1);
+        if(!current||!previous||!previous.rank) return 0;
+        return (current.rank-previous.rank)/previous.rank;
+      }
+      function hydrateRealData(manifest, payloads){
+        const byTerm=new Map();
+        Object.entries(payloads).forEach(([granularity,items])=>items.forEach(payload=>{
+          const entries=new Map();
+          (payload.keywords||[]).forEach(raw=>{
+            const item={...raw,top:(raw.topBrands||[]).map(canonicalBrand),slope:0,opp:0};
+            entries.set(normalise(item.term),item);
+            const existing=byTerm.get(normalise(item.term));
+            if(!existing||item.rank<existing.rank) byTerm.set(normalise(item.term),item);
+          });
+          REAL.byPeriod[granularity].set(payload.period,entries);
+        }));
+        GROUPS={
+          day:{name:'日',window:'近30天',labels:manifest.periods?.day||[]},
+          week:{name:'周',window:'近8周',labels:manifest.periods?.week||[]},
+          month:{name:'月',window:'近12个月',labels:manifest.periods?.month||[]}
+        };
+        for(const [id,group] of Object.entries(GROUPS)) if(!group.labels.length) GROUPS[id]=FALLBACK_GROUPS[id];
+        KEYWORDS=[...byTerm.values()];
+        const discovered=[...new Set(KEYWORDS.flatMap(item=>item.top).filter(Boolean))];
+        BRANDS=[...new Set([...BRANDS,...discovered])].sort((a,b)=>a.localeCompare(b));
+        Object.keys(GROUPS).forEach(id=>state.snapshotIndex[id]=Math.max(0,GROUPS[id].labels.length-1));
+        REAL.active=KEYWORDS.length>0;
+      }
+      async function loadRealData(){
+        try{
+          const manifest=await fetch(`${DATA_ROOT}/manifest.json`,{cache:'no-store'}).then(res=>res.ok?res.json():Promise.reject(res.status));
+          const payloads={day:[],week:[],month:[]};
+          for(const [granularity,periods] of Object.entries(manifest.periods||{})){
+            for(const period of periods||[]){
+              const response=await fetch(`${DATA_ROOT}/periods/${granularity}/${encodeURIComponent(period)}.json`,{cache:'no-store'});
+              if(response.ok) payloads[granularity].push(await response.json());
+            }
+          }
+          hydrateRealData(manifest,payloads);
+          const flag=root.querySelector('#si-data-flag'); if(flag){flag.textContent='真实数据';flag.classList.remove('si-demo-flag');flag.classList.add('si-real-flag');}
+        }catch(error){console.warn('真实数据加载失败，继续展示模拟数据。',error);}
+      }
       const state = {
         page:'overview', granularity:'day', snapshotIndex:{day:29,week:7,month:11}, brandTab:'detail', keywordTab:'discover', brand:storedFavorites.brands[0]||'WAVYTALK', scope:'focus', brandMetric:'coverage',
         compareBrands:['WAVYTALK','TYMO'], keyword:storedFavorites.keywords[0]||'hair dryer', compareKeywords:[], quadrantBrand:'',
@@ -517,6 +587,7 @@
 
       function rankSeries(item, granularity=state.granularity) {
         const labels = GROUPS[granularity].labels;
+        if(REAL.active) return labels.map((_,i)=>recordFor(item,granularity,i)?.rank??null);
         const seed = hash(item.term + granularity);
         return labels.map((label,i)=>{
           const progress = labels.length===1 ? 1 : i/(labels.length-1);
@@ -528,6 +599,10 @@
         });
       }
       function shareAt(item, brand, index, granularity=state.granularity) {
+        const actual=recordFor(item,granularity,index);
+        if(actual){
+          return (actual.products||[]).filter(product=>sameBrand(product.brand,brand)).reduce((sum,product)=>({click:sum.click+Number(product.click||0),conv:sum.conv+Number(product.conversion||0)}),{click:0,conv:0});
+        }
         const present = item.top.some(name=>name.toLowerCase()===brand.toLowerCase());
         if (!present) return {click:0,conv:0};
         const brandIndex = item.top.findIndex(name=>name.toLowerCase()===brand.toLowerCase());
@@ -541,6 +616,40 @@
         return item.top.reduce((total,name)=>{const value=shareAt(item,name,index,granularity);return {click:total.click+value.click,conv:total.conv+value.conv}}, {click:0,conv:0});
       }
       function metricSeries(brand, metric, scope=state.scope, granularity=state.granularity) {
+        if(REAL.active){
+          const labels=GROUPS[granularity].labels;
+          const weight=rank=>1/Math.log2(Math.max(2,Number(rank)+1));
+          return labels.map((_,index)=>{
+            const records=[...(REAL.byPeriod[granularity]?.get(labels[index])?.values()||[])].filter(item=>scope==='market'||item.focus);
+            const covered=item=>item.top.some(name=>sameBrand(name,brand));
+            const coveredRows=records.filter(covered);
+            if(metric==='coverage') return coveredRows.length;
+            if(metric==='topk') return coveredRows.filter(item=>item.rank<=10000).length;
+            if(metric==='click'||metric==='conversion'){
+              const numerator=records.reduce((sum,item)=>sum+weight(item.rank)*shareAt(item,brand,index,granularity)[metric==='click'?'click':'conv'],0);
+              const denominator=records.reduce((sum,item)=>sum+weight(item.rank),0);
+              return denominator?numerator/denominator:0;
+            }
+            const previous=[...(REAL.byPeriod[granularity]?.get(labels[index-1])?.values()||[])];
+            const previousByTerm=new Map(previous.map(item=>[normalise(item.term),item]));
+            if(metric==='momentum'){
+              const values=records.filter(item=>previousByTerm.has(normalise(item.term))).map(item=>{
+                const before=previousByTerm.get(normalise(item.term));
+                return {value:(before.rank-item.rank)/Math.max(1,before.rank)*100,weight:weight(before.rank)};
+              });
+              const total=values.reduce((sum,item)=>sum+item.value*item.weight,0), totalWeight=values.reduce((sum,item)=>sum+item.weight,0);
+              return totalWeight?total/totalWeight:0;
+            }
+            if(metric==='core'){
+              const core=records.filter(item=>item.rank<=10000); return core.length?coveredRows.filter(item=>item.rank<=10000).length/core.length*100:0;
+            }
+            if(metric==='retention'){
+              const before=previous.filter(covered), keep=before.filter(item=>covered(item)&&records.some(now=>normalise(now.term)===normalise(item.term)&&covered(now)));
+              return before.length?keep.length/before.length*100:0;
+            }
+            return 0;
+          });
+        }
         const labels=GROUPS[granularity].labels, base=BRAND_BASE[brand] || BRAND_BASE.WAVYTALK, factor=scope==='focus'?.42:1;
         return labels.map((_,i)=>{
           const p=i/(labels.length-1||1), wobble=Math.sin((i+hash(brand)%5)*1.2);
@@ -643,7 +752,7 @@
       function brandDetail(){
         const cov=metricSeries(state.brand,'coverage',state.scope,state.granularity), idx=currentIndex(), latest=cov[idx], prev=cov[Math.max(0,idx-1)], clickNow=snapshotMetric(state.brand,'click'), convNow=snapshotMetric(state.brand,'conversion'), retentionNow=snapshotMetric(state.brand,'retention');
         const metricOptions={coverage:'关键词覆盖数',newlost:'新增与流失',share:'点击与转化份额',momentum:'排名动量',topk:'Top 10K覆盖',core:'核心词覆盖率',retention:'新词留存率'};
-        const brandItems=KEYWORDS.filter(k=>k.top.some(name=>name.toLowerCase()===state.brand.toLowerCase())),brandCategories=[...new Set(brandItems.map(item=>item.category))];
+        const brandItems=KEYWORDS.filter(k=>k.top.some(name=>sameBrand(name,state.brand))),brandCategories=[...new Set(brandItems.map(item=>item.category))];
         return `<div class="si-controls" style="margin-bottom:12px">${scopeControls()}</div>
           <section class="si-kpis">${kpi(state.scope==='focus'?'重点品类有效覆盖':'全市场覆盖',fmt(latest),`较上期 ${latest-prev>=0?'+':''}${fmt(latest-prev)}`,latest>=prev?'si-up':'si-down')}${kpi('加权点击份额',pct(clickNow),'连续排名权重')}${kpi('加权转化份额',pct(convNow),`效率差 ${(convNow-clickNow).toFixed(1)}pp`,convNow>=clickNow?'si-up':'si-down')}${kpi('新词留存率',pct(retentionNow),'次周期继续进入Top 3')}</section>
           <div class="si-grid-2"><section class="si-panel" id="si-brand-trend-panel"><div class="si-panel-head"><div><h2>${metricOptions[state.brandMetric]}趋势</h2><div class="si-caption">时间继承顶部筛选：${currentGroup().name}颗粒度，截止 ${currentLabel()}</div></div><div class="si-controls"><div class="si-field"><label for="si-brand-metric">趋势指标（仅此图）</label><select id="si-brand-metric">${Object.entries(metricOptions).map(([id,name])=>`<option value="${id}" ${id===state.brandMetric?'selected':''}>${name}</option>`).join('')}</select></div></div></div><div id="si-brand-trend" class="si-chart"></div>${brandDrillDetail()}</section>
@@ -653,7 +762,7 @@
       function brandDrillDetail(){
         if(!state.drillContext||state.drillContext.page!=='brand')return '';
         const metric=state.drillContext.metric, title={coverage:'有效覆盖关键词明细',newlost:'新增与流失关键词明细',share:'点击与转化承接明细',topk:'Top 10K关键词明细',retention:'新词留存明细'}[metric]||'指标明细';
-        const rows=KEYWORDS.filter(item=>item.top.some(name=>name.toLowerCase()===state.brand.toLowerCase())).slice(0,6);
+        const rows=KEYWORDS.filter(item=>item.top.some(name=>sameBrand(name,state.brand))).slice(0,6);
         return `<div class="si-drill-detail" id="si-brand-drill-detail"><h3>${esc(title)} ${help(title,'以下关键词用于解释当前图表变化，口径与顶部时间筛选一致。')}</h3><div class="si-table-wrap"><table><thead><tr><th>搜索词</th><th>细分品类</th><th class="si-num">搜索排名</th><th>排名趋势</th><th class="si-num">点击份额</th><th class="si-num">转化份额</th></tr></thead><tbody>${rows.map(item=>{const share=snapshotShare(item,state.brand)||{click:0,conv:0};return `<tr><td class="si-term">${esc(item.term)}</td><td>${esc(item.category)}</td><td class="si-num">${snapshotRank(item)==null?'未进入榜单':fmt(snapshotRank(item))}</td><td>${item.slope<0?badge('上升','up'):badge('下降','down')}</td><td class="si-num">${pct(share.click)}</td><td class="si-num">${pct(share.conv)}</td></tr>`}).join('')}</tbody></table></div></div>`;
       }
       function brandCompare(){
@@ -877,6 +986,7 @@
       root.addEventListener('focusout',e=>{if(e.target.closest('[data-tooltip]'))hideTooltip();});
       const observer=new ResizeObserver(()=>{if(chartJob)requestAnimationFrame(()=>chartJob&&chartJob())}); observer.observe(root);
       render();
+      loadRealData().then(()=>render());
     })();
   </script>
 </div>
