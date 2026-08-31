@@ -472,12 +472,11 @@
         try{
           const manifest=await fetch(`${DATA_ROOT}/manifest.json`,{cache:'no-store'}).then(res=>res.ok?res.json():Promise.reject(res.status));
           const payloads={day:[],week:[],month:[]};
-          for(const [granularity,periods] of Object.entries(manifest.periods||{})){
-            for(const period of periods||[]){
-              const response=await fetch(`${DATA_ROOT}/periods/${granularity}/${encodeURIComponent(period)}.json`,{cache:'no-store'});
-              if(response.ok) payloads[granularity].push(await response.json());
-            }
+          const jobs=[];
+          for(const [granularity,periods] of Object.entries(manifest.periods||{})) for(const period of periods||[]){
+            jobs.push(fetch(`${DATA_ROOT}/periods/${granularity}/${encodeURIComponent(period)}.json`,{cache:'no-store'}).then(response=>response.ok?response.json():null).then(payload=>{if(payload)payloads[granularity].push(payload);}));
           }
+          await Promise.all(jobs);
           hydrateRealData(manifest,payloads);
           const flag=root.querySelector('#si-data-flag'); if(flag){flag.textContent='真实数据';flag.classList.remove('si-demo-flag');flag.classList.add('si-real-flag');}
         }catch(error){console.warn('真实数据加载失败，继续展示模拟数据。',error);}
