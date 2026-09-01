@@ -424,12 +424,11 @@
       ];
       const KEYWORD_RECOMMENDATIONS = KEYWORDS.slice(0,8).map(item=>item.term);
       let GROUPS = {
-        day:{name:'日',window:'近30天',labels:Array.from({length:30},(_,i)=>new Date(Date.UTC(2026,6,26+i)).toISOString().slice(0,10))},
         week:{name:'周',window:'近8周',labels:['2026-W24','2026-W25','2026-W26','2026-W27','2026-W28','2026-W29','2026-W30','2026-W31']},
         month:{name:'月',window:'近12个月',labels:['2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08']}
       };
       const FALLBACK_GROUPS = JSON.parse(JSON.stringify(GROUPS));
-      const REAL = {active:false, byPeriod:{day:new Map(),week:new Map(),month:new Map()}};
+      const REAL = {active:false, byPeriod:{week:new Map(),month:new Map()}};
       const TABLE_EXPORTS = {};
       const DATA_ROOT = './data';
       const normalise = value => String(value||'').trim().toLowerCase().replace(/\s+/g,' ');
@@ -466,7 +465,6 @@
           REAL.byPeriod[granularity].set(payload.period,entries);
         }));
         GROUPS={
-          day:{name:'日',window:'近30天',labels:manifest.periods?.day||[]},
           week:{name:'周',window:'近8周',labels:manifest.periods?.week||[]},
           month:{name:'月',window:'近12个月',labels:manifest.periods?.month||[]}
         };
@@ -480,7 +478,7 @@
       async function loadRealData(){
         try{
           const manifest=await fetch(`${DATA_ROOT}/manifest.json`,{cache:'no-store'}).then(res=>res.ok?res.json():Promise.reject(res.status));
-          const payloads={day:[],week:[],month:[]};
+          const payloads={week:[],month:[]};
           const jobs=[];
           for(const [granularity,periods] of Object.entries(manifest.periods||{})) for(const period of periods||[]){
             jobs.push(fetch(`${DATA_ROOT}/periods/${granularity}/${encodeURIComponent(period)}.json`,{cache:'no-store'}).then(response=>response.ok?response.json():null).then(payload=>{if(payload)payloads[granularity].push(payload);}));
@@ -491,7 +489,7 @@
         }catch(error){console.warn('真实数据加载失败，继续展示模拟数据。',error);}
       }
       const state = {
-        page:'overview', granularity:'day', snapshotIndex:{day:29,week:7,month:11}, brandTab:'detail', keywordTab:'discover', brand:storedFavorites.brands[0]||'WAVYTALK', scope:'focus', brandMetric:'coverage',
+        page:'overview', granularity:'week', snapshotIndex:{week:7,month:11}, brandTab:'detail', keywordTab:'discover', brand:storedFavorites.brands[0]||'WAVYTALK', scope:'focus', brandMetric:'coverage',
         compareBrands:['WAVYTALK','TYMO'], keyword:storedFavorites.keywords[0]||'hair dryer', compareKeywords:[], quadrantBrand:'',
         detailKeyword:'all', detailBrand:'', detailStatus:'all', openDetail:null,
         opportunityCategory:'all', opportunityKind:'all', opportunityBrand:'', opportunitySearch:'',
@@ -500,7 +498,7 @@
         leaderboardSearch:'', leaderboardGrowth:'all', quadrantTableSearch:'', quadrantTableCategory:'all', drillContext:null,
         tables:{brandKeywords:{page:1,size:25},opportunities:{page:1,size:25}},
         followedBrands:new Set(storedFavorites.brands), followedKeywords:new Set(storedFavorites.keywords),
-        trends:{overview:{granularity:'day',range:30},brand:{granularity:'day',range:30},brandCompare:{granularity:'day',range:30},keyword:{granularity:'day',range:30},keywordCompare:{granularity:'day',range:30}}
+        trends:{overview:{granularity:'week',range:8},brand:{granularity:'week',range:8},brandCompare:{granularity:'week',range:8},keyword:{granularity:'week',range:8},keywordCompare:{granularity:'week',range:8}}
       };
 
       const METRIC_DEFS = {
@@ -603,12 +601,12 @@
         return {granularity:config.granularity,labels:group.labels.slice(-count),count};
       }
       function globalTrendView(){
-        const group=currentGroup(), end=currentIndex(), target=state.granularity==='day'?30:state.granularity==='week'?8:12, start=Math.max(0,end-target+1);
+        const group=currentGroup(), end=currentIndex(), target=state.granularity==='week'?8:12, start=Math.max(0,end-target+1);
         return {granularity:state.granularity,labels:group.labels.slice(start,end+1),count:end-start+1,start,end};
       }
       function trendControls(key,fixedRange=false){
-        const config=state.trends[key], ranges=config.granularity==='day'?[7,14,30]:config.granularity==='week'?[4,8]:[3,6,12];
-        const unit=config.granularity==='day'?'天':config.granularity==='week'?'周':'个月';
+        const config=state.trends[key], ranges=config.granularity==='week'?[4,8]:[3,6,12];
+        const unit=config.granularity==='week'?'周':'个月';
         return `<div class="si-controls"><div class="si-field"><label>趋势颗粒度</label><div class="si-segment">${Object.entries(GROUPS).map(([id,g])=>`<button type="button" data-trend-key="${key}" data-trend-granularity="${id}" aria-pressed="${id===config.granularity}">${g.name}</button>`).join('')}</div></div>${fixedRange?`<div class="si-field"><label>趋势范围</label><div class="si-inline-note">自动展示近${config.range}${unit}</div></div>`:`<div class="si-field"><label for="si-trend-range-${key}">趋势范围</label><select id="si-trend-range-${key}" data-trend-range="${key}">${ranges.map(value=>`<option value="${value}" ${value===config.range?'selected':''}>近${value}${unit}</option>`).join('')}</select></div>`}</div>`;
       }
 
@@ -737,7 +735,7 @@
 
       function renderGlobal(){
         granularityEl.innerHTML=Object.entries(GROUPS).map(([id,g])=>`<button type="button" data-granularity="${id}" aria-pressed="${id===state.granularity}">${g.name}</button>`).join('');
-        periodEl.type=state.granularity==='day'?'date':state.granularity==='week'?'week':'month';
+        periodEl.type=state.granularity==='week'?'week':'month';
         periodEl.min=currentGroup().labels[0];
         periodEl.max=currentGroup().labels.at(-1);
         periodEl.value=currentLabel();
@@ -982,7 +980,7 @@
         const drill=e.target.closest('[data-drill]');if(drill&&!e.target.closest('button,input,select,a')){performDrill(drill.dataset.drill);return;}
         const page=e.target.closest('[data-page]'); if(page){state.page=page.dataset.page;root.querySelectorAll('[data-page]').forEach(b=>b.setAttribute('aria-selected',String(b===page)));render();return;}
         const gran=e.target.closest('[data-granularity]'); if(gran){state.granularity=gran.dataset.granularity;state.openDetail=null;render();return;}
-        const trendGran=e.target.closest('[data-trend-granularity]'); if(trendGran){const key=trendGran.dataset.trendKey,granularity=trendGran.dataset.trendGranularity;state.trends[key].granularity=granularity;state.trends[key].range=granularity==='day'?30:granularity==='week'?8:12;render();return;}
+        const trendGran=e.target.closest('[data-trend-granularity]'); if(trendGran){const key=trendGran.dataset.trendKey,granularity=trendGran.dataset.trendGranularity;state.trends[key].granularity=granularity==='week'?'week':'month';state.trends[key].range=granularity==='week'?8:12;render();return;}
         const bt=e.target.closest('[data-brand-tab]'); if(bt){state.brandTab=bt.dataset.brandTab;render();return;}
         const kt=e.target.closest('[data-keyword-tab]'); if(kt){state.keywordTab=kt.dataset.keywordTab;state.openDetail=null;render();return;}
         const sc=e.target.closest('[data-scope]'); if(sc){state.scope=sc.dataset.scope;render();return;}
