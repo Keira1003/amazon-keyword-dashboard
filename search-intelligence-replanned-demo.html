@@ -472,21 +472,33 @@
         KEYWORDS=[...byTerm.values()];
         const discovered=[...new Set(KEYWORDS.flatMap(item=>item.top).filter(Boolean))];
         BRANDS=[...new Set([...BRANDS,...discovered])].sort((a,b)=>a.localeCompare(b));
-        Object.keys(GROUPS).forEach(id=>state.snapshotIndex[id]=Math.max(0,GROUPS[id].labels.length-1));
+        Object.keys(GROUPS).forEach(id=>{if(state.snapshotIndex[id]==null||state.snapshotIndex[id]>=GROUPS[id].labels.length)state.snapshotIndex[id]=Math.max(0,GROUPS[id].labels.length-1);});
         REAL.active=KEYWORDS.length>0;
       }
       async function loadRealData(){
         try{
           const manifest=await fetch(`${DATA_ROOT}/manifest.json`,{cache:'no-store'}).then(res=>res.ok?res.json():Promise.reject(res.status));
           const payloads={week:[],month:[]};
-          const jobs=[];
-          for(const [granularity,periods] of Object.entries(manifest.periods||{})) for(const period of periods||[]){
-            jobs.push(fetch(`${DATA_ROOT}/periods/${granularity}/${encodeURIComponent(period)}.json`,{cache:'no-store'}).then(response=>response.ok?response.json():null).then(payload=>{if(payload)payloads[granularity].push(payload);}));
-          }
-          await Promise.all(jobs);
+          // 首屏只读取默认周维度的最新快照；避免一次解析全部历史 JSON 而阻塞页面。
+          const latestWeek=(manifest.periods?.week||[]).at(-1);
+          if(latestWeek){const payload=await fetch(`${DATA_ROOT}/periods/week/${encodeURIComponent(latestWeek)}.json`,{cache:'no-store'}).then(response=>response.ok?response.json():null);if(payload)payloads.week.push(payload);}
           hydrateRealData(manifest,payloads);
           const flag=root.querySelector('#si-data-flag'); if(flag){flag.textContent='真实数据';flag.classList.remove('si-demo-flag');flag.classList.add('si-real-flag');}
         }catch(error){console.warn('真实数据加载失败，继续展示模拟数据。',error);}
+      }
+      async function ensurePeriodLoaded(granularity,index){
+        if(!REAL.active)return;
+        const period=GROUPS[granularity]?.labels[index];
+        if(!period||REAL.byPeriod[granularity]?.has(period))return;
+        try{
+          const payload=await fetch(`${DATA_ROOT}/periods/${granularity}/${encodeURIComponent(period)}.json`,{cache:'no-store'}).then(response=>response.ok?response.json():null);
+          if(!payload)return;
+          const manifest={periods:Object.fromEntries(Object.entries(GROUPS).map(([key,group])=>[key,group.labels]))};
+          const payloads={week:[],month:[]}; payloads[granularity].push(payload);
+          // 合并已加载快照，随后重新建立关键词索引；未加载的历史数据不会阻塞当前页面。
+          for(const [key,map] of Object.entries(REAL.byPeriod)) for(const previous of map.values()) if(previous.period!==payload.period) payloads[key].push(previous);
+          hydrateRealData(manifest,payloads);
+        }catch(error){console.warn('数据快照加载失败',error);}
       }
       const state = {
         page:'overview', granularity:'week', snapshotIndex:{week:7,month:11}, brandTab:'detail', keywordTab:'discover', brand:storedFavorites.brands[0]||'WAVYTALK', scope:'focus', brandMetric:'coverage',
@@ -979,7 +991,7 @@
         const tablePage=e.target.closest('[data-table-page]');if(tablePage){const table=state.tables[tablePage.dataset.tablePage];table.page=Math.max(1,table.page+Number(tablePage.dataset.pageStep));if(state.page==='brand')brandPage();else if(state.page==='keyword')keywordPage();return;}
         const drill=e.target.closest('[data-drill]');if(drill&&!e.target.closest('button,input,select,a')){performDrill(drill.dataset.drill);return;}
         const page=e.target.closest('[data-page]'); if(page){state.page=page.dataset.page;root.querySelectorAll('[data-page]').forEach(b=>b.setAttribute('aria-selected',String(b===page)));render();return;}
-        const gran=e.target.closest('[data-granularity]'); if(gran){state.granularity=gran.dataset.granularity;state.openDetail=null;render();return;}
+        const gran=e.target.closest('[data-granularity]'); if(gran){state.granularity=gran.dataset.granularity;state.openDetail=null;render();ensurePeriodLoaded(state.granularity,currentIndex()).then(()=>render());return;}
         const trendGran=e.target.closest('[data-trend-granularity]'); if(trendGran){const key=trendGran.dataset.trendKey,granularity=trendGran.dataset.trendGranularity;state.trends[key].granularity=granularity==='week'?'week':'month';state.trends[key].range=granularity==='week'?8:12;render();return;}
         const bt=e.target.closest('[data-brand-tab]'); if(bt){state.brandTab=bt.dataset.brandTab;render();return;}
         const kt=e.target.closest('[data-keyword-tab]'); if(kt){state.keywordTab=kt.dataset.keywordTab;state.openDetail=null;render();return;}
@@ -1013,7 +1025,7 @@
       });
       root.addEventListener('change',e=>{
         const id=e.target.id;
-        if(id==='si-period'){const index=currentGroup().labels.indexOf(e.target.value);if(index>=0)state.snapshotIndex[state.granularity]=index;state.openDetail=null;render();}
+        if(id==='si-period'){const index=currentGroup().labels.indexOf(e.target.value);if(index>=0)state.snapshotIndex[state.granularity]=index;state.openDetail=null;render();ensurePeriodLoaded(state.granularity,currentIndex()).then(()=>render());}
         if(id==='si-brand'){const value=matchValue(e.target.value,BRANDS);if(value)state.brand=value;brandPage();}
         if(id==='si-compare-brand-a')setCompareBrand(0,e.target.value);
         if(id==='si-compare-brand-b')setCompareBrand(1,e.target.value);
